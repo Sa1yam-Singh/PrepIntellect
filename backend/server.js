@@ -18,7 +18,7 @@ const Session = require("./models/Session");
 // ── Configuration ───────────────────────────────────────────────
 const app = express();
 const PORT = process.env.PORT || 3001;
-const MAX_QUESTIONS = 6;
+const MAX_QUESTIONS = 15;
 
 // Multer — store uploaded audio blobs in a temp directory
 const uploadsDir = path.join(__dirname, "uploads");
@@ -36,14 +36,76 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // ── Mock Fallback Questions (Structured Stage Alignment) ────────
-const MOCK_QUESTIONS = [
-  "Welcome to the interview! To start off, could you please introduce yourself, tell me about your background, and why you are interested in this position?",
-  "Tell me about a time you faced a difficult challenge or conflict during a previous technical project. What was the situation, and how did you resolve it?",
-  "Let's move on to technical fundamentals. Can you explain the difference between a stack and a queue? In what scenarios would you choose one over the other?",
-  "What is the average and worst-case time complexity of common operations in a hash map? How does it handle collisions under the hood?",
-  "How would you design a scalable URL shortening service like bit.ly? What are the key components and database selection considerations?",
-  "We are at the end of the interview. Do you have any questions for me, or is there anything else you'd like to highlight about your skills?",
-];
+const MOCK_QUESTIONS_BY_CATEGORY = {
+  Engineering: [
+    "Welcome to the interview! To start off, could you please introduce yourself, tell me about your background, and what roles you are preparing for?",
+    "Tell me about a time you faced a difficult challenge or conflict during a previous technical project. What was the situation, and how did you resolve it?",
+    "Can you describe a situation where you had to work under a tight deadline or handle a high-pressure launch? How did you prioritize your tasks?",
+    "Describe a time when you took the initiative to improve a process, tool, or codebase without being explicitly asked. What was the outcome?",
+    "Let's move on to programming language fundamentals. How does memory management or garbage collection work in your primary programming language?",
+    "Can you explain the difference between a stack and a queue? In what scenarios would you choose one over the other?",
+    "What is the average and worst-case time complexity of common operations in a hash map, and how does it handle collisions under the hood?",
+    "Suppose you are given a massive log file containing millions of entries. How would you design an algorithm to find the top 10 most frequent IP addresses efficiently?",
+    "How would you optimize that log parsing algorithm to run in a memory-constrained environment, say with only 10MB of RAM?",
+    "Let's move to system design. How would you design a scalable URL shortening service like bit.ly? What are the key components?",
+    "For the URL shortener system, how would you select and structure your databases? Would you use SQL or NoSQL, and how would you handle horizontal scaling?",
+    "How would you handle security and rate limiting in your URL shortener service to prevent abuse or distributed denial of service attacks?",
+    "Imagine a scenario where a production service suddenly experiences a 10x spike in response latency, but CPU usage remains low. What could be the cause, and how would you troubleshoot it?",
+    "Based on your listed skills and keywords, what is one advanced feature or architectural pattern you've used in your past projects that you are particularly proud of?",
+    "We are at the end of the interview. Do you have any questions for me, or is there anything else you'd like to highlight about your skills?",
+  ],
+  Medical: [
+    "Welcome to your medical mock interview. To begin, could you introduce yourself, describe your clinical experience, and share your residency goals?",
+    "Can you share an instance where you had to communicate difficult diagnostic news to a patient or their family? How did you manage it?",
+    "Describe a high-pressure triage situation you've experienced in the ER or ICU. How did you make decisions under extreme stress?",
+    "Tell me about a medical ethics or patient confidentiality dilemma you've encountered. What did you decide and why?",
+    "Let's cover medical fundamentals. Can you explain the physiological mechanisms of the renin-angiotensin-aldosterone system (RAAS)?",
+    "How do you approach history-taking for a patient presenting with acute abdominal pain? What key differentials do you keep in mind?",
+    "Can you explain the primary side effects and drug-drug interactions of commonly prescribed anticoagulants?",
+    "Clinical Case: A 62-year-old male presents with acute chest pain, radiating to the left arm, with ST-segment elevation on EKG. What is your differential diagnosis and immediate testing plan?",
+    "For the previous ST-elevation MI case, what is your treatment plan, and how do you monitor the patient for post-infarct complications?",
+    "In hospital systems, how do you approach a clinical audit for reducing surgical site infection rates?",
+    "How does your clinical practice balance using Electronic Health Records (EHR) with ensuring HIPAA/patient data confidentiality?",
+    "What are the key steps in designing a vaccine deployment campaign during a local influenza outbreak?",
+    "Emergency Scenario: A patient in the ward suddenly exhibits severe dyspnea, stridor, and oxygen saturation drops to 78%. What are your immediate diagnostic and treatment steps?",
+    "Given your medical specialties, what is an interesting clinical research topic or complex patient case you have worked on?",
+    "We are at the end of the interview. Do you have any questions for the residency committee, or any final details to share?",
+  ],
+  Defense: [
+    "Welcome to the SSB mock interview. To start off, please introduce yourself, state your educational background, and why you want to join the Armed Forces.",
+    "SSB evaluates discipline. Can you tell me about a time you had to follow an order you disagreed with, or how you dealt with authority?",
+    "SSB looks for moral and physical courage. Describe a situation where you had to handle fear or stand up for what was right under peer pressure.",
+    "Tell me about a time you had to work with a challenging group or peer to complete an objective. How did you adapt?",
+    "Let's test planning ability. Suppose you are leading a group of 5 students on a trek and one gets injured. How would you plan and organize the rescue?",
+    "SSB values effective intelligence. How do you keep yourself updated with national security matters, and how do you apply this knowledge?",
+    "SSB evaluates social warmth. How do you build trust with new teammates in a high-intensity training camp?",
+    "SRT Scenario: You are traveling in a train and notice a suspicious package under the seat, and there is no cellular network. How would you react?",
+    "SRT Scenario: During a mock military patrol, your radio communication goes down and you spot simulated hostile movement. What actions do you take?",
+    "What is your assessment of the current geopolitical security dynamics in the Indo-Pacific region?",
+    "How would you utilize Armed Forces resources for disaster relief and civilian evacuation during a major flood?",
+    "How is the integration of modern technologies like drones, electronic warfare, and cybersecurity changing defense operations?",
+    "Command Task: You are tasked to lead a team to bridge a 10-foot wide canal using only a wooden plank and a rope. How do you instruct your team?",
+    "Can you explain the command structure of the Indian Armed Forces and the significance of joint military exercises?",
+    "We are done. Do you have any questions for the board, or is there any aspect of your qualities you wish to elaborate on?",
+  ],
+  Aviation: [
+    "Welcome to the cabin crew interview. Could you please introduce yourself, share your background, and why you want to pursue a career in aviation?",
+    "Cabin crew requires service excellence. Describe a time you turned an unhappy customer or guest into a satisfied one. What did you do?",
+    "Aviation rosters can be demanding. How do you manage fatigue, long flights, jet lag, and maintain energy on duty?",
+    "Air hostesses must maintain pristine grooming. What does professional grooming and presentation mean to you in a safety-first role?",
+    "Let's cover safety checks. What are the key items you inspect during pre-flight cabin security checks?",
+    "Boarding is critical. How would you handle a passenger who refuses to store their oversized baggage in the overhead bin?",
+    "Aviation service is structured. How do you ensure high-quality catering and beverage service on a short-haul flight with full passenger load?",
+    "In-flight Medical: A passenger is experiencing chest tightness and difficulty breathing at 35,000 feet. What is your immediate protocol?",
+    "Passenger Handling: An intoxicated passenger becomes loud and aggressive towards another passenger. How do you de-escalate the situation?",
+    "Aviation safety: What are the cabin crew procedures in the event of sudden cabin decompression?",
+    "Evacuation: In an emergency landing requiring evacuation, what verbal commands and protocols do you use to evacuate passengers via slides?",
+    "Severe Turbulence: The captain turns on the seatbelt sign due to severe turbulence. What are your immediate actions for passenger and crew safety?",
+    "Service Deficit: If you run out of pre-ordered vegetarian meals on a long flight, how would you resolve this passenger complaint?",
+    "Hospitality: How do you customize service for first-class or VIP passengers while adhering to safety protocols?",
+    "This concludes the cabin crew mock interview. Do you have any questions for the airline panel?",
+  ],
+};
 
 const MOCK_REACTIONS = [
   "That's a solid foundation. You clearly understand the core concepts here.",
@@ -84,11 +146,25 @@ app.use((req, _res, next) => {
 
 // ── Utility: Build Gemini System Prompt ─────────────────────────
 function buildSystemPrompt(user) {
+  let persona = "senior technical interviewer at a top-tier technology company";
+  let skillsLabel = "key skills";
+  
+  if (user.category === "Medical") {
+    persona = "senior medical chief examiner and clinical director at a premier hospital (such as AIIMS)";
+    skillsLabel = "medical subjects and specialties";
+  } else if (user.category === "Defense") {
+    persona = "president and military psychologist of the Services Selection Board (SSB)";
+    skillsLabel = "OLQs (Officer Like Qualities) and defense subjects";
+  } else if (user.category === "Aviation") {
+    persona = "senior cabin crew training director and flight operations evaluator at a leading global airline";
+    skillsLabel = "aviation hospitality and safety skills";
+  }
+
   return [
-    `You are a senior technical interviewer at a top-tier technology company.`,
-    `You are interviewing a candidate for the role of "${user.targetRole}".`,
-    `The candidate's experience level is "${user.experienceLevel}".`,
-    `Their key skills include: ${user.skillsKeywords.join(", ") || "general software engineering"}.`,
+    `You are a ${persona}.`,
+    `You are interviewing a candidate for the role/course of "${user.targetRole}".`,
+    `The candidate's experience level or target track is "${user.experienceLevel}".`,
+    `Their ${skillsLabel} include: ${user.skillsKeywords.join(", ") || "general subjects"}.`,
     ``,
     `Rules:`,
     `- Ask exactly ONE focused technical question at a time.`,
@@ -184,45 +260,87 @@ async function retryWithBackoff(fn, maxRetries = 1) {
   }
 }
 
+const CATEGORY_STAGES = {
+  Engineering: [
+    { stage: "INTRODUCTION & WELCOME", instruction: "Welcome the candidate warmly. Invite them to introduce themselves and discuss their background." },
+    { stage: "BEHAVIORAL - TEAMWORK & CONFLICT", instruction: "Ask a behavioral question about handling conflict or different work styles in a team." },
+    { stage: "BEHAVIORAL - PRESSURE & DEADLINES", instruction: "Ask a behavioral question about working under a tight deadline or handling a project that failed." },
+    { stage: "BEHAVIORAL - LEADERSHIP & INITIATIVE", instruction: "Ask a behavioral question about showing initiative or leadership on a technical project." },
+    { stage: "FOUNDATIONAL TECHNICAL - LANG MECHANICS & CONCURRENCY", instruction: "Ask a core question on runtime mechanics, memory management, or concurrency in their primary programming language." },
+    { stage: "FOUNDATIONAL TECHNICAL - DATA STRUCTURES", instruction: "Ask a question about data structures (e.g., stack vs queue, hash map operations, tree structures)." },
+    { stage: "FOUNDATIONAL TECHNICAL - ALGORITHMS", instruction: "Ask a question about core algorithms (e.g., sorting, searching, space/time complexity trade-offs)." },
+    { stage: "ADVANCED ALGORITHMIC DESIGN", instruction: "Present a complex algorithmic problem-solving question related to the candidate's profile." },
+    { stage: "CODING OPTIMIZATION & EDGE CASES", instruction: "Ask how they would optimize the previous algorithm for extreme constraints (e.g., memory limits, large datasets)." },
+    { stage: "SYSTEM DESIGN - HIGH-LEVEL ARCHITECTURE", instruction: "Ask a high-level system design question (e.g., design a URL shortener, rate limiter, or messaging queue)." },
+    { stage: "SYSTEM DESIGN - DATABASE & SCALABILITY", instruction: "Ask about database choices, sharding, replication, and handling database read/write scaling." },
+    { stage: "SYSTEM DESIGN - FAULT TOLERANCE & SECURITY", instruction: "Ask about security, rate limiting, and ensuring fault tolerance during network partition." },
+    { stage: "TROUBLESHOOTING & LIVE SCENARIO", instruction: "Present a hypothetical production outage scenario and ask how they would isolate and diagnose it." },
+    { stage: "ROLE-SPECIFIC DEEP DIVE", instruction: "Ask an advanced technical question directly targeting their listed skills keywords." },
+    { stage: "WRAP-UP & CLOSING", instruction: "Conclude the interview. Ask if they have questions for you. Thank them for their time." }
+  ],
+  Medical: [
+    { stage: "MEDICAL INTRODUCTION & MOTIVATION", instruction: "Welcome the medical candidate warmly. Invite them to introduce themselves, their medical background, and residency aspirations." },
+    { stage: "BEHAVIORAL - EMPATHY & PATIENT CARE", instruction: "Ask a behavioral question about demonstrating deep empathy or handling a difficult patient communication scenario." },
+    { stage: "BEHAVIORAL - EMERGENCY HIGH-STRESS DECISIONS", instruction: "Ask a situational question about emergency triage, making a critical life-or-death decision under pressure." },
+    { stage: "BEHAVIORAL - MEDICAL ETHICS & DISPUTES", instruction: "Ask a question about patient confidentiality, medical ethics, or resolving a dispute with a patient's family." },
+    { stage: "MEDICAL FOUNDATIONS - ANATOMY & PHYSIOLOGY", instruction: "Ask a core foundational question on human anatomy or physiological mechanisms." },
+    { stage: "MEDICAL FOUNDATIONS - DIAGNOSTIC REASONING", instruction: "Ask about their process for patient history-taking and developing differential diagnoses." },
+    { stage: "MEDICAL FOUNDATIONS - PHARMACOLOGY & DRUG INTERACTIONS", instruction: "Ask about pharmacology, drug interactions, contraindications, or dosage calculations." },
+    { stage: "CLINICAL CASE STUDY - PATIENT PRESENTATION", instruction: "Present a clinical symptom profile and ask them to discuss differential diagnoses and testing." },
+    { stage: "CLINICAL CASE STUDY - TREATMENT PLANNING", instruction: "Ask them to outline a treatment plan, risk mitigation, and patient monitoring strategy for the case." },
+    { stage: "MEDICAL SYSTEMS - HOSPITAL INFRASTRUCTURE", instruction: "Ask about clinical audit procedures, hospital hygiene, or public health guidelines." },
+    { stage: "MEDICAL SYSTEMS - EHR & DATA SECURITY", instruction: "Ask about electronic health record (EHR) systems and maintaining patient data security/privacy." },
+    { stage: "MEDICAL SYSTEMS - DISEASE PREVENTION & OUTBREAKS", instruction: "Ask about protocols for disease prevention, vaccine rollout, or outbreak containment." },
+    { stage: "EMERGENCY SCENARIO - PATIENT DETERIORATION", instruction: "Present a scenario of a patient code-blue or trauma case and ask them to outline immediate interventions." },
+    { stage: "ROLE-SPECIFIC MEDICAL SPECIALTY DEEP DIVE", instruction: "Ask an advanced clinical question related to their target specialty (e.g. AIIMS residency preference)." },
+    { stage: "WRAP-UP & CLOSING", instruction: "Conclude the medical interview. Ask if they have questions. Thank them for their time." }
+  ],
+  Defense: [
+    { stage: "DEFENSE INTRODUCTION & MOTIVATION", instruction: "Welcome the candidate warmly. Invite them to introduce themselves, their background, and their motivation to join the Armed Forces (NDA/CDS)." },
+    { stage: "BEHAVIORAL - DISCIPLINE & AUTHORITY", instruction: "Ask a behavioral question about maintaining discipline, following orders, or dealing with authority." },
+    { stage: "BEHAVIORAL - FEAR MANAGEMENT & GRIT", instruction: "Ask a question about handling fear, displaying physical/moral courage, and showing grit in adversity." },
+    { stage: "BEHAVIORAL - SOCIAL ADAPTABILITY & TEAM", instruction: "Ask about social adaptability, peer relationships, and team cooperation in stressful environments." },
+    { stage: "OLQ - PLANNING & REASONING ABILITY", instruction: "Ask a question to evaluate planning, organizing, and logical reasoning ability." },
+    { stage: "OLQ - EFFECTIVE INTELLIGENCE & EXPRESSION", instruction: "Ask a question to evaluate effective intelligence and clarity of power of expression." },
+    { stage: "OLQ - SOCIAL WARMTH & RESPONSIBILITY", instruction: "Ask a question evaluating social warmth, cooperation, and sense of duty/responsibility." },
+    { stage: "SRT - CIVILIAN CRISIS SCENARIO", instruction: "Present a Situation Reaction Test: a sudden civilian emergency (e.g., natural disaster or accident) and ask how they would act." },
+    { stage: "SRT - MILITARY TROOP SCENARIO", instruction: "Present a Situation Reaction Test: a troop/mission complication (e.g., lost communication, resource shortage) and ask for their plan." },
+    { stage: "STRATEGIC KNOWLEDGE - GEOPOLITICS", instruction: "Ask about current global affairs, border security issues, or defense dynamics of the nation." },
+    { stage: "STRATEGIC KNOWLEDGE - INTERNAL SECURITY", instruction: "Ask about internal security challenges, insurgency, or military disaster relief operations." },
+    { stage: "STRATEGIC KNOWLEDGE - MODERN DEFENSE TECH", instruction: "Ask about modern warfare technologies such as militarized AI, drones, or cyber defense." },
+    { stage: "COMMAND TASK - OBSTACLE & LEADERSHIP", instruction: "Present a hypothetical command task scenario (leading a group through an obstacle to rescue hostages or secure a zone) and ask how they lead." },
+    { stage: "MILITARY AWARENESS - STRUCTURE & HISTORY", instruction: "Ask a question about armed forces structure, ranks, commands, or military history." },
+    { stage: "WRAP-UP & CLOSING", instruction: "Conclude the SSB interview. Ask if they have questions for the panel. Thank them for their time." }
+  ],
+  Aviation: [
+    { stage: "AVIATION INTRODUCTION & MOTIVATION", instruction: "Welcome the aviation candidate warmly. Invite them to introduce themselves, their background, and interest in joining the cabin crew." },
+    { stage: "BEHAVIORAL - CUSTOMER SERVICE EXCELLENCE", instruction: "Ask a behavioral question about delivering service excellence or handling a very difficult passenger." },
+    { stage: "BEHAVIORAL - STRESS & COPE ON FLIGHTS", instruction: "Ask a question about managing stress, fatigue, long shifts, and jet lag." },
+    { stage: "BEHAVIORAL - CULTURAL SENSITIVITY & GROOMING", instruction: "Ask about maintaining high grooming standards and showing cultural sensitivity to international passengers." },
+    { stage: "CABIN CREW DUTIES - SAFETY BRIEFINGS", instruction: "Ask a question about conducting pre-flight passenger briefings and cabin checks." },
+    { stage: "CABIN CREW DUTIES - BOARDING & LUGGAGE", instruction: "Ask about handling passenger boarding, seating conflicts, and luggage storage problems." },
+    { stage: "CABIN CREW DUTIES - IN-FLIGHT SERVICE", instruction: "Ask about food/beverage service standards, galley organization, and teamwork under time pressure." },
+    { stage: "PASSENGER HANDLING - MEDICAL EMERGENCY", instruction: "Present an in-flight medical crisis (e.g., heart attack, panic attack, choking) and ask for their action plan." },
+    { stage: "PASSENGER HANDLING - ANXIOUS/DISRUPTIVE PASSENGER", instruction: "Present a scenario of an anxious, claustrophobic, or disruptive/intoxicated passenger and ask how they manage them." },
+    { stage: "AVIATION SYSTEMS - AIRCRAFT SAFETY GEAR", instruction: "Ask about aircraft safety equipment (e.g., oxygen masks, exits, slides, life rafts)." },
+    { stage: "AVIATION SYSTEMS - EMERGENCY EVACUATION", instruction: "Ask about emergency cabin evacuation procedures (water landing or runway landing slide evacuation)." },
+    { stage: "AVIATION SYSTEMS - WEATHER & DECOMPRESSION", instruction: "Ask about handling severe turbulence, cabin decompression, or smoke in the cabin." },
+    { stage: "PROBLEM SOLVING - SERVICE DEFICIT", instruction: "Present a customer service problem (e.g., running out of vegetarian meals or business class seating issues) and ask for their resolution." },
+    { stage: "SPECIALIZED HOSPITALITY - VIP CLIENTS", instruction: "Ask about serving VIP/first-class clients or handling complex luxury service requirements." },
+    { stage: "WRAP-UP & CLOSING", instruction: "Conclude the aviation interview. Ask if they have questions. Thank them." }
+  ]
+};
+
 // ── Utility: Generate Question via Gemini (with mock fallback) ──
-async function generateQuestion(systemPrompt, previousQA) {
+async function generateQuestion(systemPrompt, previousQA, category = "Engineering") {
   const questionIndex = previousQA ? previousQA.length : 0;
 
   try {
     const parts = [{ text: systemPrompt }];
 
-    let stagePrompt = "";
-    if (questionIndex === 0) {
-      stagePrompt = [
-        `Stage: INTRODUCTION & WELCOME (Warmup)`,
-        `Instruction: Introduce yourself warmly as the PrepIntellect AI Interviewer. Welcoming the candidate and invite them to introduce themselves (e.g. ask "Tell me about yourself, your background, and what roles you are preparing for"). Keep it natural, conversational, and friendly.`
-      ].join("\n");
-    } else if (questionIndex === 1) {
-      stagePrompt = [
-        `Stage: HR & BEHAVIORAL METHODOLOGY`,
-        `Instruction: Transition naturally. Ask a situational HR behavioral question to evaluate their soft skills, handling challenges, or teamwork (e.g. "Can you describe a time you worked on a team with someone who had a different work style or perspective, and how you worked together to ensure project success?").`
-      ].join("\n");
-    } else if (questionIndex === 2) {
-      stagePrompt = [
-        `Stage: FOUNDATIONAL TECHNICAL PRINCIPLES`,
-        `Instruction: Move on to technical fundamentals. Ask a core foundational question relating to the candidate's keywords, target role, or skills. Focus on base concepts, language mechanics, or architecture foundations.`
-      ].join("\n");
-    } else if (questionIndex === 3) {
-      stagePrompt = [
-        `Stage: ADVANCED CODING & OPTIMIZATION`,
-        `Instruction: Ask an advanced coding or algorithmic problem solving question. Challenge them on edge cases, time/space complexity, performance, or optimizations related to their target role.`
-      ].join("\n");
-    } else if (questionIndex === 4) {
-      stagePrompt = [
-        `Stage: SCENARIO SYSTEM DESIGN OR TROUBLESHOOTING`,
-        `Instruction: Ask a system design or live troubleshooting scenario question (e.g. design a scaling component, handle distributed state, or troubleshoot a performance degradation).`
-      ].join("\n");
-    } else if (questionIndex === 5) {
-      stagePrompt = [
-        `Stage: WRAP-UP & CLOSING`,
-        `Instruction: Conclude the interview. Ask if they have any questions for you, or invite them to share any final details about their projects or skills. Thank them for their time.`
-      ].join("\n");
-    }
+    const stages = CATEGORY_STAGES[category] || CATEGORY_STAGES.Engineering;
+    const stageInfo = stages[questionIndex] || stages[stages.length - 1];
+    const stagePrompt = `Stage: ${stageInfo.stage}\nInstruction: ${stageInfo.instruction}`;
 
     if (previousQA && previousQA.length > 0) {
       const history = previousQA
@@ -263,7 +381,8 @@ async function generateQuestion(systemPrompt, previousQA) {
   } catch (err) {
     console.warn(`[Gemini] Failed to generate question ${questionIndex + 1}:`, err.message?.slice(0, 150));
     console.log(`[Mock Fallback] Serving mock question ${questionIndex + 1}`);
-    return MOCK_QUESTIONS[questionIndex % MOCK_QUESTIONS.length];
+    const categoryMockQuestions = MOCK_QUESTIONS_BY_CATEGORY[category] || MOCK_QUESTIONS_BY_CATEGORY.Engineering;
+    return categoryMockQuestions[questionIndex % categoryMockQuestions.length];
   }
 }
 
@@ -354,7 +473,7 @@ app.get("/api/health", (_req, res) => {
 // ── Create or Update User (upsert / onboarding) ──────────────────
 app.post("/api/users", async (req, res) => {
   try {
-    const { name, email, targetRole, experienceLevel, skillsKeywords, organization } = req.body;
+    const { name, email, targetRole, experienceLevel, skillsKeywords, organization, category } = req.body;
     
     // Find existing user by email
     let user = await User.findOne({ email });
@@ -364,6 +483,7 @@ app.post("/api/users", async (req, res) => {
       user.experienceLevel = experienceLevel || user.experienceLevel;
       user.skillsKeywords = skillsKeywords || user.skillsKeywords;
       user.organization = organization || user.organization;
+      user.category = category || user.category;
       await user.save();
       return res.status(200).json(user);
     }
@@ -375,6 +495,7 @@ app.post("/api/users", async (req, res) => {
       experienceLevel,
       skillsKeywords,
       organization: organization || "Personal",
+      category: category || "Engineering",
     });
     res.status(201).json(user);
   } catch (err) {
@@ -518,7 +639,7 @@ app.post("/api/interview/start", async (req, res) => {
 
     // Build system prompt and generate first question
     const systemPrompt = buildSystemPrompt(user);
-    const question = await generateQuestion(systemPrompt, []);
+    const question = await generateQuestion(systemPrompt, [], user.category);
 
     // Create new session document
     const session = await Session.create({
@@ -641,7 +762,7 @@ app.post("/api/interview/next", upload.single("audio"), async (req, res) => {
     // Not the final question: generate reaction and next question in parallel
     const [reactionResult, questionResult] = await Promise.all([
       generateReaction(systemPrompt, currentQuestion, transcribedText),
-      generateQuestion(systemPrompt, session.chatHistory)
+      generateQuestion(systemPrompt, session.chatHistory, user.category)
     ]);
 
     aiReaction = reactionResult;
@@ -689,19 +810,25 @@ app.post("/api/interview/live-complete", async (req, res) => {
     let currentQuestion = "Introduction";
     let currentAnswer = "";
 
+    // Track timestamps for accurate duration calculation
+    let lastTimestamp = session.createdAt ? new Date(session.createdAt).getTime() : Date.now();
+
     if (Array.isArray(conversation)) {
       conversation.forEach((turn) => {
+        const turnTime = turn.timestamp ? new Date(turn.timestamp).getTime() : Date.now();
         if (turn.sender === "AI") {
           if (currentAnswer) {
+            const duration = Math.max(5, Math.round((turnTime - lastTimestamp) / 1000));
             chatHistory.push({
               question: currentQuestion,
               transcribedAnswer: currentAnswer,
               aiReaction: "",
-              durationSeconds: 20,
+              durationSeconds: duration,
             });
             currentAnswer = "";
           }
           currentQuestion = turn.text;
+          lastTimestamp = turnTime;
         } else {
           currentAnswer += (currentAnswer ? " " : "") + turn.text;
         }
@@ -709,11 +836,13 @@ app.post("/api/interview/live-complete", async (req, res) => {
     }
 
     if (currentQuestion || currentAnswer) {
+      const endTime = Date.now();
+      const duration = Math.max(5, Math.round((endTime - lastTimestamp) / 1000));
       chatHistory.push({
         question: currentQuestion || "Closing",
         transcribedAnswer: currentAnswer || "(no answer)",
         aiReaction: "",
-        durationSeconds: 20,
+        durationSeconds: duration,
       });
     }
 
@@ -797,6 +926,7 @@ wss.on("connection", (ws, request) => {
   const targetRole = urlParams.get("targetRole") || "Software Engineer";
   const experienceLevel = urlParams.get("experienceLevel") || "Mid-Level";
   const skillsKeywords = urlParams.get("skillsKeywords") || "general programming";
+  const category = urlParams.get("category") || "Engineering";
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -833,22 +963,30 @@ wss.on("connection", (ws, request) => {
         systemInstruction: {
           parts: [{
             text: [
-              `You are a supportive, warm, senior technical and behavioral interviewer at a top tech company.`,
-              `You are conducting a live mock interview with the candidate for the role of "${targetRole}" (${experienceLevel}).`,
-              `Their target skills keywords are: ${skillsKeywords}.`,
+              `You are a supportive, warm, ${(() => {
+                if (category === "Medical") {
+                  return "senior medical chief examiner and clinical director at a premier hospital (such as AIIMS)";
+                } else if (category === "Defense") {
+                  return "Services Selection Board (SSB) president and military interviewer";
+                } else if (category === "Aviation") {
+                  return "senior cabin crew flight trainer and aviation hospitality evaluator";
+                }
+                return "senior technical and behavioral interviewer at a top tech company";
+              })()}.`,
+              `You are conducting a live mock interview with the candidate for the role/course of "${targetRole}" (${experienceLevel}).`,
+              `Their target ${category === "Engineering" ? "skills keywords" : category === "Medical" ? "subjects and specialties" : category === "Defense" ? "OLQs (Officer Like Qualities) and training areas" : "aviation service and safety skills"} are: ${skillsKeywords}.`,
               ``,
               `Flow Guidelines:`,
-              `1. Warmly introduce yourself as the PrepIntellect interviewer, and ask the candidate to introduce themselves and their background.`,
-              `2. Transition to a behavioral/HR question to check soft skills.`,
-              `3. Ask a foundational technical concept matching their skills.`,
-              `4. Ask an advanced problem-solving question or coding optimization.`,
-              `5. Ask a system design or live troubleshooting scenario.`,
-              `6. Conclude the session, tell them it went well, and thank them.`,
+              `You must pace the interview to last at least 10 minutes and ask at least 12-15 questions in total before concluding. Ask exactly one question at a time and wait for the candidate's response before moving to the next.`,
+              `Structure the interview across these stages:`,
+              ...(CATEGORY_STAGES[category] || CATEGORY_STAGES.Engineering).map((s, idx) => `${idx + 1}. ${s.stage}: ${s.instruction} (1 question)`),
               ``,
               `Rules:`,
-              `- Respond like a human interviewer. Acknowledge what they say naturally.`,
-              `- Keep your responses short and punchy (under 2 sentences, under 40 words) so it feels like a real-time verbal conversation.`,
-              `- Do not write code or long lists. Speak directly.`
+              `- You MUST ask at least 12-15 questions. Do NOT skip any stages or wrap up early.`,
+              `- Maintain a professional, encouraging, yet rigorous tone.`,
+              `- Respond like a human interviewer: acknowledge their answer naturally with a brief comment before moving to the next question.`,
+              `- Keep your responses short and punchy (under 2 sentences, under 45 words) to ensure a fluid real-time conversation.`,
+              `- Do not write code blocks, lists, or long explanations. Talk directly.`
             ].join("\n")
           }]
         },

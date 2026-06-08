@@ -21,8 +21,13 @@ const userSchema = new mongoose.Schema(
     },
     experienceLevel: {
       type: String,
-      enum: ["Intern", "Junior", "Mid-Level", "Senior", "Staff", "Principal"],
       default: "Mid-Level",
+      trim: true,
+    },
+    category: {
+      type: String,
+      default: "Engineering",
+      trim: true,
     },
     skillsKeywords: {
       type: [String],

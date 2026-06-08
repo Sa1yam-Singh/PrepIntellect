@@ -50,6 +50,7 @@ export default function App() {
     name: "",
     email: "",
     organization: "Personal",
+    category: "Engineering",
     targetRole: "Software Engineer",
     experienceLevel: "Mid-Level",
     skillsKeywords: "",
@@ -70,6 +71,7 @@ export default function App() {
           const dbRes = await API.get(`/users/${encodeURIComponent(firebaseUser.email)}`);
           setUserId(dbRes.data._id);
           userData.organization = dbRes.data.organization || "Personal";
+          userData.category = dbRes.data.category || "Engineering";
           userData.targetRole = dbRes.data.targetRole || "Software Engineer";
           userData.experienceLevel = dbRes.data.experienceLevel || "Mid-Level";
           userData.skillsKeywords = dbRes.data.skillsKeywords || [];
@@ -84,6 +86,7 @@ export default function App() {
           name: userData.name,
           email: userData.email,
           organization: userData.organization || prev.organization || "Personal",
+          category: userData.category || prev.category || "Engineering",
           targetRole: userData.targetRole || prev.targetRole,
           experienceLevel: userData.experienceLevel || prev.experienceLevel,
           skillsKeywords: userData.skillsKeywords?.join(", ") || prev.skillsKeywords
@@ -99,6 +102,7 @@ export default function App() {
             const dbRes = await API.get(`/users/${encodeURIComponent(userData.email)}`);
             setUserId(dbRes.data._id);
             userData.organization = dbRes.data.organization || "Personal";
+            userData.category = dbRes.data.category || "Engineering";
             userData.targetRole = dbRes.data.targetRole || "Software Engineer";
             userData.experienceLevel = dbRes.data.experienceLevel || "Mid-Level";
             userData.skillsKeywords = dbRes.data.skillsKeywords || [];
@@ -112,6 +116,7 @@ export default function App() {
             name: userData.name,
             email: userData.email,
             organization: userData.organization || prev.organization || "Personal",
+            category: userData.category || prev.category || "Engineering",
             targetRole: userData.targetRole || prev.targetRole,
             experienceLevel: userData.experienceLevel || prev.experienceLevel,
             skillsKeywords: userData.skillsKeywords?.join(", ") || prev.skillsKeywords
@@ -237,6 +242,7 @@ export default function App() {
             email: userRes.data.email,
             uid: user?.uid || `mock-${uid}`,
             organization: userRes.data.organization || "Personal",
+            category: userRes.data.category || "Engineering",
             targetRole: userRes.data.targetRole,
             experienceLevel: userRes.data.experienceLevel,
             skillsKeywords: userRes.data.skillsKeywords || [],
@@ -385,6 +391,52 @@ export default function App() {
                   className="auth-input"
                   placeholder="Google / Personal / University"
                 />
+              </div>
+
+              {/* Category / Course selection */}
+              <div>
+                <label htmlFor="category" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  Interview Category / Course
+                </label>
+                <select
+                  id="category"
+                  name="category"
+                  value={form.category}
+                  onChange={(e) => {
+                    const cat = e.target.value;
+                    let targetRole = "Software Engineer";
+                    let skillsKeywords = "React, Node.js, JavaScript";
+                    let experienceLevel = "Mid-Level";
+
+                    if (cat === "Medical") {
+                      targetRole = "Resident Medical Officer";
+                      skillsKeywords = "Anatomy, General Medicine, Patient Care";
+                      experienceLevel = "MBBS Graduate";
+                    } else if (cat === "Defense") {
+                      targetRole = "SSB Army Cadet";
+                      skillsKeywords = "Officer Like Qualities (OLQs), General Knowledge, Situation Reaction";
+                      experienceLevel = "SSB Aspirant";
+                    } else if (cat === "Aviation") {
+                      targetRole = "Air Hostess / Cabin Crew";
+                      skillsKeywords = "Customer Service, Aviation Safety, First Aid, Verbal Communication";
+                      experienceLevel = "Trainee";
+                    }
+
+                    setForm(prev => ({
+                      ...prev,
+                      category: cat,
+                      targetRole,
+                      skillsKeywords,
+                      experienceLevel
+                    }));
+                  }}
+                  className="auth-input bg-navy-900"
+                >
+                  <option value="Engineering">Engineering / IT / Tech</option>
+                  <option value="Medical">Medical / Healthcare / AIIMS</option>
+                  <option value="Defense">Defense Services (NDA SSB, CDS SSB)</option>
+                  <option value="Aviation">Aviation & Hospitality (Air Hostess)</option>
+                </select>
               </div>
 
               {/* Target Role */}

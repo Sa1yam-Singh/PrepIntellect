@@ -19,6 +19,8 @@ export default function InterviewChamber({ sessionId, onComplete }) {
   const [isMuted, setIsMuted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [interimCandidateSpeech, setInterimCandidateSpeech] = useState("");
+  const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   
   // Guardrails & Visuals
   const [guardrailLogs, setGuardrailLogs] = useState([]);
@@ -81,6 +83,7 @@ export default function InterviewChamber({ sessionId, onComplete }) {
         const session = res.data;
         if (session.userId) {
           setRoleConfig({
+            category: session.userId.category || "Engineering",
             targetRole: session.userId.targetRole,
             experienceLevel: session.userId.experienceLevel,
             skillsKeywords: session.userId.skillsKeywords?.join(", ") || "software engineering"
@@ -189,6 +192,17 @@ export default function InterviewChamber({ sessionId, onComplete }) {
       videoRef.current.srcObject = mediaStreamRef.current;
     }
   }, [interviewStarted]);
+
+  // ── Elapsed Time Tracker ──────────────────────────────────────────
+  useEffect(() => {
+    if (!interviewStarted || isSubmitting || !sessionStartTime) return;
+    
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - sessionStartTime) / 1000));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [interviewStarted, isSubmitting, sessionStartTime]);
 
   // ── Tab Switch / Visibility Change Detection ──────────────────────
   useEffect(() => {
@@ -305,21 +319,23 @@ export default function InterviewChamber({ sessionId, onComplete }) {
   const startLiveSession = (config) => {
     let wsUrl;
     const backendUrl = import.meta.env.VITE_BACKEND_URL;
+    const query = `targetRole=${encodeURIComponent(config.targetRole)}&experienceLevel=${encodeURIComponent(config.experienceLevel)}&skillsKeywords=${encodeURIComponent(config.skillsKeywords)}&category=${encodeURIComponent(config.category || "Engineering")}`;
+
     if (backendUrl) {
       try {
         const url = new URL(backendUrl);
         const protocol = url.protocol === "https:" ? "wss:" : "ws:";
-        wsUrl = `${protocol}//${url.host}/api/live-interview?targetRole=${encodeURIComponent(config.targetRole)}&experienceLevel=${encodeURIComponent(config.experienceLevel)}&skillsKeywords=${encodeURIComponent(config.skillsKeywords)}`;
+        wsUrl = `${protocol}//${url.host}/api/live-interview?${query}`;
       } catch (err) {
         console.error("Invalid VITE_BACKEND_URL for WebSocket creation:", err);
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const host = window.location.host.includes("localhost") || window.location.host.includes("127.0.0.1") ? "localhost:3001" : window.location.host;
-        wsUrl = `${protocol}//${host}/api/live-interview?targetRole=${encodeURIComponent(config.targetRole)}&experienceLevel=${encodeURIComponent(config.experienceLevel)}&skillsKeywords=${encodeURIComponent(config.skillsKeywords)}`;
+        wsUrl = `${protocol}//${host}/api/live-interview?${query}`;
       }
     } else {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = window.location.host.includes("localhost") || window.location.host.includes("127.0.0.1") ? "localhost:3001" : window.location.host;
-      wsUrl = `${protocol}//${host}/api/live-interview?targetRole=${encodeURIComponent(config.targetRole)}&experienceLevel=${encodeURIComponent(config.experienceLevel)}&skillsKeywords=${encodeURIComponent(config.skillsKeywords)}`;
+      wsUrl = `${protocol}//${host}/api/live-interview?${query}`;
     }
 
     console.log("Connecting Live Voice API client via WebSocket proxy:", wsUrl);
@@ -346,7 +362,7 @@ export default function InterviewChamber({ sessionId, onComplete }) {
             setInterimCandidateSpeech(trans.text);
           }
           if (trans.finished) {
-            setConversation((prev) => [...prev, { sender: "You", text: trans.text.trim() }]);
+            setConversation((prev) => [...prev, { sender: "You", text: trans.text.trim(), timestamp: Date.now() }]);
             setInterimCandidateSpeech("");
           }
         }
@@ -376,7 +392,7 @@ export default function InterviewChamber({ sessionId, onComplete }) {
               if (lastTurn && lastTurn.sender === "You" && lastTurn.text === interimText.trim()) {
                 return prev;
               }
-              return [...prev, { sender: "You", text: interimText.trim() }];
+              return [...prev, { sender: "You", text: interimText.trim(), timestamp: Date.now() }];
             });
             setInterimCandidateSpeech("");
           }
@@ -403,7 +419,7 @@ export default function InterviewChamber({ sessionId, onComplete }) {
           setAiSpeaking(false);
           const fullText = aiTextResponseRef.current.trim();
           if (fullText) {
-            setConversation((prev) => [...prev, { sender: "AI", text: fullText }]);
+            setConversation((prev) => [...prev, { sender: "AI", text: fullText, timestamp: Date.now() }]);
           }
           setAiTextResponse("");
         }
@@ -636,8 +652,20 @@ export default function InterviewChamber({ sessionId, onComplete }) {
   }, [pushLog, handleInterruption]);
 
   // ── Finish & Evaluate Live Session ────────────────────────────────
-  const handleEndLiveSession = async () => {
+  const handleEndLiveSession = async (force = false) => {
     if (isSubmitting) return;
+
+    // Count AI questions asked
+    const aiQuestionCount = conversation.filter(turn => turn.sender === "AI").length;
+
+    // 10 minutes is 600 seconds
+    if (!force && (elapsedSeconds < 600 || aiQuestionCount < 10)) {
+      const confirmEnd = window.confirm(
+        `Your interview has been running for ${Math.floor(elapsedSeconds / 60)} minutes and you have answered ${aiQuestionCount} questions. We recommend at least 10 minutes and 10 questions for a comprehensive grading report. Are you sure you want to end it now?`
+      );
+      if (!confirmEnd) return;
+    }
+
     setIsSubmitting(true);
     pushLog("📤 Concluding live session and initiating grading pipeline...", "system");
 
@@ -714,7 +742,9 @@ export default function InterviewChamber({ sessionId, onComplete }) {
           <button
             onClick={() => {
               if (!roleConfig) return;
+              const now = Date.now();
               setInterviewStarted(true);
+              setSessionStartTime(now);
               startLiveSession(roleConfig);
             }}
             disabled={!roleConfig}
@@ -737,6 +767,26 @@ export default function InterviewChamber({ sessionId, onComplete }) {
           <div className="absolute top-4 left-4 flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full px-3 py-1 text-xs">
             <div className="h-2 w-2 rounded-full bg-indigo-400 animate-ping" />
             <span className="font-bold text-indigo-300 uppercase tracking-wider text-[10px]">Gemini 2.0 Live</span>
+          </div>
+
+          {/* Timer and Question Counters */}
+          <div className="absolute top-4 right-4 flex items-center gap-3">
+            <div className="flex items-center gap-1.5 bg-navy-950/80 border border-white/5 rounded-full px-3 py-1 text-xs font-mono text-gray-300">
+              <span className="text-gray-500 text-[10px] uppercase font-bold">Time:</span>
+              <span className={`font-bold ${elapsedSeconds < 600 ? "text-cyan-400" : "text-emerald-400"}`}>
+                {(() => {
+                  const mins = Math.floor(elapsedSeconds / 60);
+                  const secs = elapsedSeconds % 60;
+                  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+                })()}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-navy-950/80 border border-white/5 rounded-full px-3 py-1 text-xs font-mono text-gray-300">
+              <span className="text-gray-500 text-[10px] uppercase font-bold">Questions:</span>
+              <span className={`font-bold ${conversation.filter(turn => turn.sender === "AI").length < 10 ? "text-cyan-400" : "text-emerald-400"}`}>
+                {conversation.filter(turn => turn.sender === "AI").length}
+              </span>
+            </div>
           </div>
 
           {/* Glowing Orb Speaker Centerpiece */}
@@ -763,6 +813,15 @@ export default function InterviewChamber({ sessionId, onComplete }) {
                 : "Say hello or explain your answer. Your microphone is active."
               }
             </p>
+            {elapsedSeconds < 600 ? (
+              <p className="text-[10px] text-cyan-400/80 font-semibold mt-2 select-none animate-pulse">
+                Pacing: Continue interacting. Active duration is {Math.floor(elapsedSeconds / 60)}/10 mins.
+              </p>
+            ) : (
+              <p className="text-[10px] text-emerald-400 font-semibold mt-2 select-none">
+                ✓ Minimum recommended duration (10 mins) achieved!
+              </p>
+            )}
           </div>
 
           {/* AI Speaking Sound Waves */}
