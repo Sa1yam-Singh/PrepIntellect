@@ -337,7 +337,7 @@ app.get("/api/health", (_req, res) => {
 // ── Create or Update User (upsert / onboarding) ──────────────────
 app.post("/api/users", async (req, res) => {
   try {
-    const { name, email, targetRole, experienceLevel, skillsKeywords } = req.body;
+    const { name, email, targetRole, experienceLevel, skillsKeywords, organization } = req.body;
     
     // Find existing user by email
     let user = await User.findOne({ email });
@@ -346,6 +346,7 @@ app.post("/api/users", async (req, res) => {
       user.targetRole = targetRole || user.targetRole;
       user.experienceLevel = experienceLevel || user.experienceLevel;
       user.skillsKeywords = skillsKeywords || user.skillsKeywords;
+      user.organization = organization || user.organization;
       await user.save();
       return res.status(200).json(user);
     }
@@ -356,8 +357,23 @@ app.post("/api/users", async (req, res) => {
       targetRole,
       experienceLevel,
       skillsKeywords,
+      organization: organization || "Personal",
     });
     res.status(201).json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/users/:email ───────────────────────────────────────
+app.get("/api/users/:email", async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+    res.json(user);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

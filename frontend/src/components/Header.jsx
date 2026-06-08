@@ -78,6 +78,16 @@ export default function Header({ currentView, setView, user, onLogout, openAuthM
           </button>
           {user && (
             <button
+              onClick={() => handleNavClick("profile")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:text-white hover:bg-white/5 flex items-center gap-1.5 ${
+                currentView === "profile" ? "text-purple-400 bg-purple-500/5" : "text-gray-400"
+              }`}
+            >
+              <FiUser className="text-sm" /> Profile
+            </button>
+          )}
+          {user && (
+            <button
               onClick={() => setView("dashboard")}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:text-white hover:bg-white/5 flex items-center gap-1.5 ${
                 currentView === "analytics" ? "text-cyan-400 bg-cyan-500/5" : "text-gray-400"
@@ -114,6 +124,12 @@ export default function Header({ currentView, setView, user, onLogout, openAuthM
                     <p className="text-xs text-gray-500 truncate">{user.email}</p>
                   </div>
                   <div className="py-1">
+                    <button
+                      onClick={() => { setView("profile"); setDropdownOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"
+                    >
+                      <FiUser className="text-purple-400" /> My Profile
+                    </button>
                     <button
                       onClick={() => { setView("dashboard"); setDropdownOpen(false); }}
                       className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition"
@@ -186,6 +202,16 @@ export default function Header({ currentView, setView, user, onLogout, openAuthM
             >
               Features
             </button>
+            {user && (
+              <button 
+                onClick={() => handleNavClick("profile")}
+                className={`text-left px-4 py-2.5 rounded-xl text-sm font-medium transition ${
+                  currentView === "profile" ? "text-purple-400 bg-purple-500/5" : "text-gray-400 hover:bg-white/5"
+                }`}
+              >
+                Profile
+              </button>
+            )}
           </div>
 
           <div className="border-t border-white/5 pt-5">

@@ -9,6 +9,7 @@ import DashboardHub from "./components/DashboardHub";
 import InterviewChamber from "./components/InterviewChamber";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import MeetRoom from "./components/MeetRoom";
+import ProfilePage from "./components/ProfilePage";
 
 const API = axios.create({ baseURL: "/api" });
 
@@ -44,6 +45,7 @@ export default function App() {
   const [form, setForm] = useState({
     name: "",
     email: "",
+    organization: "Personal",
     targetRole: "Software Engineer",
     experienceLevel: "Mid-Level",
     skillsKeywords: "",
@@ -51,19 +53,36 @@ export default function App() {
 
   // Listen to Firebase Auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userData = {
           name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
           email: firebaseUser.email,
-          uid: firebaseUser.uid
+          uid: firebaseUser.uid,
+          organization: "Personal"
         };
+        
+        try {
+          const dbRes = await API.get(`/users/${encodeURIComponent(firebaseUser.email)}`);
+          setUserId(dbRes.data._id);
+          userData.organization = dbRes.data.organization || "Personal";
+          userData.targetRole = dbRes.data.targetRole || "Software Engineer";
+          userData.experienceLevel = dbRes.data.experienceLevel || "Mid-Level";
+          userData.skillsKeywords = dbRes.data.skillsKeywords || [];
+        } catch (err) {
+          console.log("User not found in database yet.");
+        }
+
         setUser(userData);
         sessionStorage.removeItem("prep_intellect_mock_user"); // Firebase has active user, clear mock user
         setForm(prev => ({
           ...prev,
           name: userData.name,
-          email: userData.email
+          email: userData.email,
+          organization: userData.organization || prev.organization || "Personal",
+          targetRole: userData.targetRole || prev.targetRole,
+          experienceLevel: userData.experienceLevel || prev.experienceLevel,
+          skillsKeywords: userData.skillsKeywords?.join(", ") || prev.skillsKeywords
         }));
         setView(prev => prev === "landing" ? "dashboard" : prev);
       } else {
@@ -71,22 +90,38 @@ export default function App() {
         const savedMock = sessionStorage.getItem("prep_intellect_mock_user");
         if (savedMock) {
           const userData = JSON.parse(savedMock);
+          
+          try {
+            const dbRes = await API.get(`/users/${encodeURIComponent(userData.email)}`);
+            setUserId(dbRes.data._id);
+            userData.organization = dbRes.data.organization || "Personal";
+            userData.targetRole = dbRes.data.targetRole || "Software Engineer";
+            userData.experienceLevel = dbRes.data.experienceLevel || "Mid-Level";
+            userData.skillsKeywords = dbRes.data.skillsKeywords || [];
+          } catch (err) {
+            console.log("Mock user not found in database yet.");
+          }
+
           setUser(userData);
           setForm(prev => ({
             ...prev,
             name: userData.name,
-            email: userData.email
+            email: userData.email,
+            organization: userData.organization || prev.organization || "Personal",
+            targetRole: userData.targetRole || prev.targetRole,
+            experienceLevel: userData.experienceLevel || prev.experienceLevel,
+            skillsKeywords: userData.skillsKeywords?.join(", ") || prev.skillsKeywords
           }));
           setView(prev => prev === "landing" ? "dashboard" : prev);
         } else {
           setUser(null);
-          setView(prev => prev === "dashboard" || prev === "onboarding" || prev === "interview" || prev === "meet-room" ? "landing" : prev);
+          setView(prev => prev === "dashboard" || prev === "onboarding" || prev === "interview" || prev === "meet-room" || prev === "profile" ? "landing" : prev);
         }
       }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [userId]);
 
   // Sync view state to sessionStorage
   useEffect(() => {
@@ -324,6 +359,23 @@ export default function App() {
                 </div>
               )}
 
+              {/* Organization */}
+              <div>
+                <label htmlFor="organization" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  Organization / Company
+                </label>
+                <input
+                  id="organization"
+                  name="organization"
+                  type="text"
+                  required
+                  value={form.organization || ""}
+                  onChange={handleFormChange}
+                  className="auth-input"
+                  placeholder="Google / Personal / University"
+                />
+              </div>
+
               {/* Target Role */}
               <div>
                 <label htmlFor="targetRole" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-400">
@@ -438,6 +490,20 @@ export default function App() {
             isPeerMatch={isPeerMatch}
             user={user}
             onLeave={() => setView("dashboard")}
+          />
+        )}
+
+        {/* Profile View */}
+        {view === "profile" && user && (
+          <ProfilePage
+            user={user}
+            setUser={setUser}
+            onLogout={handleLogout}
+            onViewReport={(sessId, evaluationData) => {
+              setSessionId(sessId);
+              setEvaluation(evaluationData);
+              setView("analytics");
+            }}
           />
         )}
 

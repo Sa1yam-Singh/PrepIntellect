@@ -28,6 +28,11 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    organization: {
+      type: String,
+      default: "Personal",
+      trim: true,
+    },
   },
   { timestamps: true }
 );
