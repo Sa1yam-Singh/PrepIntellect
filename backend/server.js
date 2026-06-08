@@ -54,8 +54,25 @@ const MOCK_REACTIONS = [
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" });
 
-// ── Middleware ───────────────────────────────────────────────────
-app.use(cors({ origin: ["http://localhost:5173", "http://127.0.0.1:5173"] }));
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+    if (!origin) return callback(null, true);
+    
+    const isAllowed = allowedOrigins.includes(origin) || origin.endsWith(".vercel.app");
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  }
+}));
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
