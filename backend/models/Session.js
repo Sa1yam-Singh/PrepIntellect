@@ -41,6 +41,7 @@ const infractionSchema = new mongoose.Schema(
         "MULTIPLE_PEOPLE",
         "LOOK_AWAY",
         "BACKGROUND_NOISE",
+        "DEVICE_DETECTED",
       ],
     },
     timestamp: {

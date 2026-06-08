@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
-import { FilesetResolver, FaceLandmarker } from "@mediapipe/tasks-vision";
+import { FilesetResolver, FaceLandmarker, ObjectDetector } from "@mediapipe/tasks-vision";
 import { FiVolume2, FiVolumeX, FiCpu, FiPhoneOff, FiMic, FiMicOff } from "react-icons/fi";
 
 const API = axios.create({ baseURL: "/api" });
@@ -24,7 +24,8 @@ export default function InterviewChamber({ sessionId, onComplete }) {
     noFace: false,
     multipleFaces: false,
     lookingAway: false,
-    loudNoise: false
+    loudNoise: false,
+    deviceDetected: false
   });
 
   // ── Refs ──────────────────────────────────────────────────────────
@@ -33,6 +34,8 @@ export default function InterviewChamber({ sessionId, onComplete }) {
   const logsEndRef = useRef(null);
   const conversationEndRef = useRef(null);
   const landmarkerRef = useRef(null);
+  const detectorRef = useRef(null);
+  const lastDeviceWarningTimeRef = useRef(0);
 
   // Audio Contexts & WebSocket Refs
   const audioContextRef = useRef(null);
@@ -87,35 +90,49 @@ export default function InterviewChamber({ sessionId, onComplete }) {
     fetchSession();
   }, [sessionId, pushLog]);
 
-  // ── Load Face Landmarker Model ────────────────────────────────────
+  // ── Load Face Landmarker & Object Detector Models ────────────────
   useEffect(() => {
     let active = true;
-    async function loadModel() {
+    async function loadModels() {
       try {
-        pushLog("Loading MediaPipe Face Landmarker assets...", "system");
+        pushLog("Loading MediaPipe tracking models...", "system");
         const vision = await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
         );
-        const landmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-            delegate: "GPU"
-          },
-          runningMode: "VIDEO",
-          numFaces: 4
-        });
+        
+        const [landmarker, detector] = await Promise.all([
+          FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+              delegate: "GPU"
+            },
+            runningMode: "VIDEO",
+            numFaces: 4
+          }),
+          ObjectDetector.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.task",
+              delegate: "GPU"
+            },
+            runningMode: "VIDEO",
+            scoreThreshold: 0.35
+          })
+        ]);
+
         if (active) {
           landmarkerRef.current = landmarker;
-          pushLog("MediaPipe Face Landmarker loaded.", "success");
+          detectorRef.current = detector;
+          pushLog("MediaPipe Face Landmarker & Object Detector loaded.", "success");
         }
       } catch (err) {
-        pushLog(`Failed to load Face Landmarker: ${err.message}`, "error");
+        pushLog(`Failed to load tracking models: ${err.message}`, "error");
       }
     }
-    loadModel();
+    loadModels();
     return () => {
       active = false;
       if (landmarkerRef.current) landmarkerRef.current.close();
+      if (detectorRef.current) detectorRef.current.close();
     };
   }, [pushLog]);
 
@@ -524,7 +541,56 @@ export default function InterviewChamber({ sessionId, onComplete }) {
           }
         }
 
-        setRealtimeAlerts({ noFace, multipleFaces, lookingAway, loudNoise: isLoud });
+        // 3. Perform Object Detection checks (Cell Phone, Laptop, etc.)
+        const detector = detectorRef.current;
+        let objectDetections = null;
+        if (detector) {
+          try { objectDetections = detector.detectForVideo(video, timestamp); } catch {}
+        }
+
+        let deviceDetected = false;
+        let detectedDeviceName = "";
+
+        if (objectDetections && objectDetections.detections) {
+          for (const det of objectDetections.detections) {
+            const categories = det.categories || [];
+            for (const cat of categories) {
+              const label = cat.categoryName?.toLowerCase() || "";
+              if (label === "cell phone" || label === "phone" || label === "mobile phone" || label === "laptop") {
+                deviceDetected = true;
+                detectedDeviceName = cat.categoryName;
+                break;
+              }
+            }
+            if (deviceDetected) break;
+          }
+        }
+
+        if (deviceDetected) {
+          if (now - lastDeviceWarningTimeRef.current > 15000) {
+            lastDeviceWarningTimeRef.current = now;
+            setInfractions(p => [...p, { infractionType: "DEVICE_DETECTED", timestamp: new Date().toISOString() }]);
+            pushLog(`⚠ DEVICE_DETECTED — electronic device (${detectedDeviceName}) visible on camera.`, "danger");
+
+            // Speak the warning out loud
+            try {
+              window.speechSynthesis.cancel();
+              const warningSpeech = new SpeechSynthesisUtterance("Please do not use any electronic devices to see answers during the interview.");
+              warningSpeech.rate = 1.0;
+              window.speechSynthesis.speak(warningSpeech);
+            } catch (e) {
+              console.error("Speech synthesis warning failed:", e);
+            }
+          }
+        }
+
+        setRealtimeAlerts({ 
+          noFace, 
+          multipleFaces, 
+          lookingAway, 
+          loudNoise: isLoud,
+          deviceDetected 
+        });
       }
 
       animationFrameId = requestAnimationFrame(checkFrame);
@@ -548,7 +614,8 @@ export default function InterviewChamber({ sessionId, onComplete }) {
     try {
       const res = await API.post("/interview/live-complete", {
         sessionId,
-        conversation
+        conversation,
+        infractions
       });
 
       pushLog("🏁 Live interview graded successfully!", "success");
@@ -825,6 +892,11 @@ export default function InterviewChamber({ sessionId, onComplete }) {
                 {realtimeAlerts.loudNoise && (
                   <div className="rounded-xl bg-yellow-600/90 border border-yellow-500/50 px-4 py-2 text-xs font-bold text-white shadow-xl flex items-center gap-1.5 animate-pulse uppercase tracking-wider">
                     ⚠️ Audio Interrupt Warning
+                  </div>
+                )}
+                {realtimeAlerts.deviceDetected && (
+                  <div className="rounded-xl bg-rose-600/90 border border-rose-500/50 px-4 py-2 text-xs font-bold text-white shadow-xl flex items-center gap-1.5 animate-pulse uppercase tracking-wider">
+                    ⚠️ Device Detected (No Cheating)
                   </div>
                 )}
               </div>

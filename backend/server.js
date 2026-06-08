@@ -658,7 +658,7 @@ app.post("/api/interview/next", upload.single("audio"), async (req, res) => {
 // Finishes the live voice session, saves history, and generates evaluation
 app.post("/api/interview/live-complete", async (req, res) => {
   try {
-    const { sessionId, conversation } = req.body;
+    const { sessionId, conversation, infractions } = req.body;
     if (!sessionId) return res.status(400).json({ error: "sessionId is required." });
 
     const session = await Session.findById(sessionId);
@@ -716,6 +716,20 @@ app.post("/api/interview/live-complete", async (req, res) => {
     } catch (err) {
       console.warn("[Gemini Live Eval] Failed, fallback to mock:", err.message);
       evaluation = generateMockEvaluation(chatHistory);
+    }
+
+    // ── Append infraction telemetry ──────────────────────────────
+    if (infractions) {
+      const parsed =
+        typeof infractions === "string" ? JSON.parse(infractions) : infractions;
+      if (Array.isArray(parsed)) {
+        parsed.forEach((inf) => {
+          session.cheatingInfractions.push({
+            infractionType: inf.infractionType || "TAB_SWITCH",
+            timestamp: inf.timestamp ? new Date(inf.timestamp) : new Date(),
+          });
+        });
+      }
     }
 
     session.finalEvaluation = evaluation;
