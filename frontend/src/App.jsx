@@ -222,22 +222,29 @@ export default function App() {
             .filter(Boolean),
         };
 
-        let uid = userId;
-        if (!uid) {
-          try {
-            const userRes = await API.post("/users", userPayload);
-            uid = userRes.data._id;
-          } catch (err) {
-            // If user already exists (409), try matching or handle
-            if (err.response?.status === 409) {
-              setError("User with this email already exists in system database. Please use a unique email or restart.");
-              setLoading(false);
-              return;
-            }
-            throw err;
+        // Always upsert user profile on start to keep data updated
+        let uid;
+        try {
+          const userRes = await API.post("/users", userPayload);
+          uid = userRes.data._id;
+          
+          const authenticatedUser = {
+            name: userRes.data.name,
+            email: userRes.data.email,
+            uid: user?.uid || `mock-${uid}`,
+            organization: userRes.data.organization || "Personal",
+            targetRole: userRes.data.targetRole,
+            experienceLevel: userRes.data.experienceLevel,
+            skillsKeywords: userRes.data.skillsKeywords || [],
+          };
+          setUser(authenticatedUser);
+          if (!user || user.uid.startsWith("mock-")) {
+            sessionStorage.setItem("prep_intellect_mock_user", JSON.stringify(authenticatedUser));
           }
-          setUserId(uid);
+        } catch (err) {
+          throw err;
         }
+        setUserId(uid);
 
         // Start interview session
         const startRes = await API.post("/interview/start", { userId: uid });
@@ -249,7 +256,7 @@ export default function App() {
         setLoading(false);
       }
     },
-    [form, userId]
+    [form, userId, user]
   );
 
   // ── Interview Complete ──────────────────────────────────────────

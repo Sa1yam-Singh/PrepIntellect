@@ -100,39 +100,55 @@ export default function InterviewChamber({ sessionId, onComplete }) {
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
         );
         
-        const [landmarker, detector] = await Promise.all([
-          FaceLandmarker.createFromOptions(vision, {
+        // Load Face Landmarker
+        try {
+          const landmarker = await FaceLandmarker.createFromOptions(vision, {
             baseOptions: {
               modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
               delegate: "GPU"
             },
             runningMode: "VIDEO",
             numFaces: 4
-          }),
-          ObjectDetector.createFromOptions(vision, {
+          });
+          if (active) {
+            landmarkerRef.current = landmarker;
+            pushLog("MediaPipe Face Landmarker loaded.", "success");
+          }
+        } catch (err) {
+          pushLog(`Failed to load Face Landmarker: ${err.message}`, "error");
+        }
+
+        // Load Object Detector (Cell Phone / Laptop)
+        try {
+          const detector = await ObjectDetector.createFromOptions(vision, {
             baseOptions: {
-              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.task",
-              delegate: "GPU"
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_uint8.tflite",
+              delegate: "CPU"
             },
             runningMode: "VIDEO",
             scoreThreshold: 0.35
-          })
-        ]);
-
-        if (active) {
-          landmarkerRef.current = landmarker;
-          detectorRef.current = detector;
-          pushLog("MediaPipe Face Landmarker & Object Detector loaded.", "success");
+          });
+          if (active) {
+            detectorRef.current = detector;
+            pushLog("MediaPipe Object Detector loaded.", "success");
+          }
+        } catch (err) {
+          pushLog(`Failed to load Object Detector: ${err.message}`, "error");
         }
+
       } catch (err) {
-        pushLog(`Failed to load tracking models: ${err.message}`, "error");
+        pushLog(`Failed to initialize fileset resolver: ${err.message}`, "error");
       }
     }
     loadModels();
     return () => {
       active = false;
-      if (landmarkerRef.current) landmarkerRef.current.close();
-      if (detectorRef.current) detectorRef.current.close();
+      if (landmarkerRef.current) {
+        try { landmarkerRef.current.close(); } catch {}
+      }
+      if (detectorRef.current) {
+        try { detectorRef.current.close(); } catch {}
+      }
     };
   }, [pushLog]);
 
