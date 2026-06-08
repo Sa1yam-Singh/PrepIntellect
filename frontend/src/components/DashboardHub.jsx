@@ -6,7 +6,11 @@ import {
   FiCalendar, FiClock, FiActivity, FiArrowRight, FiCheckCircle, FiCopy, FiClipboard, FiZap
 } from "react-icons/fi";
 
-const API = axios.create({ baseURL: "/api" });
+const API = axios.create({
+  baseURL: import.meta.env.VITE_BACKEND_URL 
+    ? `${import.meta.env.VITE_BACKEND_URL}/api` 
+    : "/api"
+});
 
 const cardVariants = {
   hidden: { opacity: 0, y: 30 },

@@ -3,7 +3,11 @@ import axios from "axios";
 import { FilesetResolver, FaceLandmarker, ObjectDetector } from "@mediapipe/tasks-vision";
 import { FiVolume2, FiVolumeX, FiCpu, FiPhoneOff, FiMic, FiMicOff } from "react-icons/fi";
 
-const API = axios.create({ baseURL: "/api" });
+const API = axios.create({
+  baseURL: import.meta.env.VITE_BACKEND_URL 
+    ? `${import.meta.env.VITE_BACKEND_URL}/api` 
+    : "/api"
+});
 
 export default function InterviewChamber({ sessionId, onComplete }) {
   // ── State ────────────────────────────────────────────────────────
@@ -299,9 +303,24 @@ export default function InterviewChamber({ sessionId, onComplete }) {
 
   // ── WebSocket & Audio Capture Setup ───────────────────────────────
   const startLiveSession = (config) => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host.includes("localhost") || window.location.host.includes("127.0.0.1") ? "localhost:3001" : window.location.host;
-    const wsUrl = `${protocol}//${host}/api/live-interview?targetRole=${encodeURIComponent(config.targetRole)}&experienceLevel=${encodeURIComponent(config.experienceLevel)}&skillsKeywords=${encodeURIComponent(config.skillsKeywords)}`;
+    let wsUrl;
+    const backendUrl = import.meta.env.VITE_BACKEND_URL;
+    if (backendUrl) {
+      try {
+        const url = new URL(backendUrl);
+        const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+        wsUrl = `${protocol}//${url.host}/api/live-interview?targetRole=${encodeURIComponent(config.targetRole)}&experienceLevel=${encodeURIComponent(config.experienceLevel)}&skillsKeywords=${encodeURIComponent(config.skillsKeywords)}`;
+      } catch (err) {
+        console.error("Invalid VITE_BACKEND_URL for WebSocket creation:", err);
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const host = window.location.host.includes("localhost") || window.location.host.includes("127.0.0.1") ? "localhost:3001" : window.location.host;
+        wsUrl = `${protocol}//${host}/api/live-interview?targetRole=${encodeURIComponent(config.targetRole)}&experienceLevel=${encodeURIComponent(config.experienceLevel)}&skillsKeywords=${encodeURIComponent(config.skillsKeywords)}`;
+      }
+    } else {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.host.includes("localhost") || window.location.host.includes("127.0.0.1") ? "localhost:3001" : window.location.host;
+      wsUrl = `${protocol}//${host}/api/live-interview?targetRole=${encodeURIComponent(config.targetRole)}&experienceLevel=${encodeURIComponent(config.experienceLevel)}&skillsKeywords=${encodeURIComponent(config.skillsKeywords)}`;
+    }
 
     console.log("Connecting Live Voice API client via WebSocket proxy:", wsUrl);
     const ws = new WebSocket(wsUrl);

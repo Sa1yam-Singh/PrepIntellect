@@ -104,6 +104,15 @@ function AnimatedCounter({ target }) {
   return <span className="text-3xl font-bold text-gray-100 score-counter">{value}</span>;
 }
 
+const getAudioUrl = (url) => {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "";
+  const cleanBackendUrl = backendUrl.endsWith("/") ? backendUrl.slice(0, -1) : backendUrl;
+  const cleanUrl = url.startsWith("/") ? url : `/${url}`;
+  return `${cleanBackendUrl}${cleanUrl}`;
+};
+
 export default function AnalyticsDashboard({ sessionId, evaluation, onRestart }) {
   const [session, setSession] = useState(null);
 
@@ -385,7 +394,7 @@ export default function AnalyticsDashboard({ sessionId, evaluation, onRestart })
                     <div>
                       <span className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5">Listen to Recording</span>
                       <audio 
-                        src={q.audioUrl} 
+                        src={getAudioUrl(q.audioUrl)} 
                         controls 
                         className="w-full max-w-lg h-9 rounded-lg bg-navy-900 border border-white/10 outline-none accent-indigo-500" 
                       />

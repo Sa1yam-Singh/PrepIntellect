@@ -11,7 +11,11 @@ import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import MeetRoom from "./components/MeetRoom";
 import ProfilePage from "./components/ProfilePage";
 
-const API = axios.create({ baseURL: "/api" });
+const API = axios.create({
+  baseURL: import.meta.env.VITE_BACKEND_URL 
+    ? `${import.meta.env.VITE_BACKEND_URL}/api` 
+    : "/api"
+});
 
 export default function App() {
   // ── Auth & View states ──────────────────────────────────────────
