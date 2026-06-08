@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in with Google</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-[#f0f4f9] min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white rounded-3xl shadow-md border border-gray-200 w-full max-w-[450px] p-10 flex flex-col justify-between min-h-[500px]">
+    
+    <!-- Top Brand Header -->
+    <div class="flex flex-col items-center text-center">
+      <!-- Google Color Logo SVG -->
+      <svg class="h-10 w-10 mb-4" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+        <g transform="matrix(1, 0, 0, 1, 0, 0)">
+          <path d="M21.35,11.1H12v2.7h5.38c-0.24,1.28 -0.96,2.37 -2.04,3.1v2.58h3.3c1.93,-1.78 3.04,-4.4 3.04,-7.49c0,-0.61 -0.05,-1.2 -0.16,-1.79Z" fill="#4285F4"/>
+          <path d="M12,20.62c2.43,0 4.47,-0.8 5.96,-2.18l-3.3,-2.58c-0.92,0.62 -2.1,0.98 -3.66,0.98c-2.35,0 -4.34,-1.58 -5.05,-3.7H2.49v2.66c1.49,2.96 4.54,4.82 8.01,4.82Z" fill="#34A853"/>
+          <path d="M6.95,13.22c-0.18,-0.54 -0.28,-1.12 -0.28,-1.72c0,-0.6 0.1,-1.18 0.28,-1.72V7.12H2.49c-0.6,1.2 -0.94,2.56 -0.94,4c0,1.44 0.34,2.8 0.94,4l4.46,-3.46Z" fill="#FBBC05"/>
+          <path d="M12,6.38c1.32,0 2.5,0.45 3.44,1.35l2.58,-2.58C16.46,3.68 14.43,3 12,3c-3.47,0 -6.52,1.86 -8.01,4.82l4.46,3.46c0.71,-2.12 2.7,-3.7 5.05,-3.7Z" fill="#EA4335"/>
+        </g>
+      </svg>
+      
+      <h1 class="text-2xl font-normal text-gray-900 mb-2">Choose an account</h1>
+      <p class="text-sm text-gray-600 mb-6">to continue to <span class="font-medium text-gray-800">PrepIntellect</span></p>
+    </div>
+
+    <!-- Account Selection List -->
+    <div class="space-y-2 flex-grow">
+      
+      <!-- Account 1 -->
+      <button onclick="selectAccount('Satya Dev', 'satya@example.com')" class="w-full flex items-center justify-between p-3.5 hover:bg-gray-50 border-b border-gray-100 transition rounded-xl text-left">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold text-lg">S</div>
+          <div>
+            <div class="text-sm font-medium text-gray-800">Satya Dev</div>
+            <div class="text-xs text-gray-500">satya@example.com</div>
+          </div>
+        </div>
+      </button>
+
+      <!-- Account 2 -->
+      <button onclick="selectAccount('Guest Tester', 'tester@prepintellect.com')" class="w-full flex items-center justify-between p-3.5 hover:bg-gray-50 border-b border-gray-100 transition rounded-xl text-left">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center font-semibold text-lg">G</div>
+          <div>
+            <div class="text-sm font-medium text-gray-800">Guest Tester</div>
+            <div class="text-xs text-gray-500">tester@prepintellect.com</div>
+          </div>
+        </div>
+      </button>
+
+      <!-- Custom Account Form -->
+      <div class="pt-4 border-t border-gray-100 mt-2">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Or use another name & email</p>
+        <div class="space-y-2.5">
+          <input type="text" id="customName" placeholder="Full Name" class="w-full text-sm px-3.5 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500" />
+          <input type="email" id="customEmail" placeholder="Email Address" class="w-full text-sm px-3.5 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500" />
+          <button onclick="useCustomAccount()" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-lg transition">
+            Continue with Custom Account
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Notice -->
+    <div class="text-xs text-gray-500 mt-6 text-center">
+      To continue, Google will share your name, email address, language preference, and profile picture with PrepIntellect.
+    </div>
+
+  </div>
+
+  <script>
+    function selectAccount(name, email) {
+      if (window.opener) {
+        window.opener.postMessage({
+          type: "MOCK_AUTH_SUCCESS",
+          provider: "Google",
+          user: {
+            name: name,
+            email: email,
+            uid: "mock-google-" + Date.now()
+          }
+        }, window.location.origin);
+        window.close();
+      }
+    }
+
+    function useCustomAccount() {
+      const name = document.getElementById('customName').value.trim();
+      const email = document.getElementById('customEmail').value.trim();
+      if (!name || !email) {
+        alert("Please enter both Name and Email.");
+        return;
+      }
+      selectAccount(name, email);
+    }
+  </script>
+</body>
+</html>
