@@ -122,4 +122,11 @@ The React/Vite frontend can be deployed directly to Vercel for high performance 
      - `VITE_FIREBASE_MESSAGING_SENDER_ID`
      - `VITE_FIREBASE_APP_ID`
 6. Click **Deploy**. Vercel will build the frontend and host it (e.g., at `https://prepintellect.vercel.app`).
+7. **Authorize Domain in Firebase (Critical)**: Because the app is now served on Vercel, you must authorize your Vercel URL in Firebase to prevent authentication requests from being blocked:
+   * Open the [Firebase Console](https://console.firebase.google.com/).
+   * Select your project (`prepintellect`).
+   * Click on **Authentication** in the left sidebar menu, then click the **Settings** tab.
+   * Click on **Authorized domains** in the settings menu.
+   * Click **Add domain**, enter your Vercel domain (e.g., `prep-intellect.vercel.app`), and click **Add**.
+
 
