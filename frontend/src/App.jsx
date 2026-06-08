@@ -237,7 +237,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen bg-navy-950 bg-grid-pattern text-gray-100 flex flex-col">
+    <div className="relative min-h-screen bg-navy-950 bg-grid-pattern bg-grid-animate text-gray-100 flex flex-col">
       {/* Background grain noise effect */}
       <div className="bg-noise" />
 

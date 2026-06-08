@@ -105,7 +105,7 @@ export default function DashboardHub({ user, onStartAIMock, onBackToLanding, onJ
       {/* ── Welcome Banner ── */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-        className="relative overflow-hidden rounded-2xl border border-indigo-500/20 bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-navy-950 p-6 md:p-8"
+        className="relative overflow-hidden rounded-2xl p-6 md:p-8 cyber-glow bg-gradient-to-r from-indigo-950/50 via-purple-950/30 to-navy-950"
       >
         {/* Floating orbs */}
         <div className="floating-orb w-[200px] h-[200px] bg-indigo-500/10 top-1/2 right-10 -translate-y-1/2" />
@@ -151,7 +151,7 @@ export default function DashboardHub({ user, onStartAIMock, onBackToLanding, onJ
             
             {/* Action 1: AI Mock Interview */}
             <motion.div custom={0} variants={cardVariants} initial="hidden" animate="visible"
-              className="glass-card p-6 flex flex-col justify-between hover:border-indigo-500/40 hover:bg-white/10 group transition duration-300"
+              className="glass-card-hover p-6 flex flex-col justify-between group"
             >
               <div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400 mb-5 group-hover:bg-indigo-500/20 group-hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] transition">
@@ -172,7 +172,7 @@ export default function DashboardHub({ user, onStartAIMock, onBackToLanding, onJ
 
             {/* Action 2: Peer Interview */}
             <motion.div custom={1} variants={cardVariants} initial="hidden" animate="visible"
-              className="glass-card p-6 flex flex-col justify-between hover:border-purple-500/40 hover:bg-white/10 group transition duration-300"
+              className="glass-card-hover p-6 flex flex-col justify-between group"
             >
               <div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400 mb-5 group-hover:bg-purple-500/20 group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)] transition">
@@ -224,7 +224,7 @@ export default function DashboardHub({ user, onStartAIMock, onBackToLanding, onJ
 
             {/* Action 3: Create Meet */}
             <motion.div custom={2} variants={cardVariants} initial="hidden" animate="visible"
-              className="glass-card p-6 flex flex-col justify-between hover:border-cyan-500/40 hover:bg-white/10 group transition duration-300"
+              className="glass-card-hover p-6 flex flex-col justify-between group"
             >
               <div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 mb-5 group-hover:bg-cyan-500/20 group-hover:shadow-[0_0_20px_rgba(6,182,212,0.15)] transition">
@@ -279,7 +279,7 @@ export default function DashboardHub({ user, onStartAIMock, onBackToLanding, onJ
 
             {/* Action 4: Join Meet */}
             <motion.div custom={3} variants={cardVariants} initial="hidden" animate="visible"
-              className="glass-card p-6 flex flex-col justify-between hover:border-teal-500/40 hover:bg-white/10 group transition duration-300"
+              className="glass-card-hover p-6 flex flex-col justify-between group"
             >
               <div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-500/10 text-teal-400 mb-5 group-hover:bg-teal-500/20 group-hover:shadow-[0_0_20px_rgba(20,184,166,0.15)] transition">

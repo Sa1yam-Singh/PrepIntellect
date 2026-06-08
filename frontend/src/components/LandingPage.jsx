@@ -117,7 +117,7 @@ export default function LandingPage({ onGetStarted, openAuthModal }) {
           transition={{ duration: 0.7, delay: 0.1 }}
           className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white mb-6 leading-[1.1]"
         >
-          Master Your Next Tech Interview with <span className="text-gradient">PrepIntellect</span>
+          Master Your Next Tech Interview with <span className="text-gradient-moving">PrepIntellect</span>
         </motion.h1>
         
         {/* Typewriter text block with fixed height to prevent content layout shift */}
@@ -417,7 +417,7 @@ export default function LandingPage({ onGetStarted, openAuthModal }) {
             </div>
           </div>
           
-          <div className="rounded-xl border border-white/10 bg-navy-950/60 p-6 font-mono text-xs text-gray-300 space-y-4">
+          <div className="rounded-xl p-6 font-mono text-xs text-gray-300 space-y-4 cyber-glow bg-navy-950/40">
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <div className="flex gap-1.5">
                 <span className="w-3 h-3 rounded-full bg-rose-500/50" />

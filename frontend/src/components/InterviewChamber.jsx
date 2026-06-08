@@ -631,7 +631,7 @@ export default function InterviewChamber({ sessionId, onComplete }) {
       <div className="lg:col-span-2 space-y-6">
         
         {/* Live Call Center Stage */}
-        <div className="glass-card-strong p-8 text-center flex flex-col items-center justify-center relative overflow-hidden h-[340px]">
+        <div className="glass-card-strong p-8 text-center flex flex-col items-center justify-center relative overflow-hidden h-[340px] cyber-glow">
           <div className="absolute top-4 left-4 flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full px-3 py-1 text-xs">
             <div className="h-2 w-2 rounded-full bg-indigo-400 animate-ping" />
             <span className="font-bold text-indigo-300 uppercase tracking-wider text-[10px]">Gemini 2.0 Live</span>
