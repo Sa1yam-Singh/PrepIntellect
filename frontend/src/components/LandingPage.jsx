@@ -151,44 +151,7 @@ function CountUp({ end, duration = 1500, suffix = "" }) {
 }
 
 export default function LandingPage({ onGetStarted, openAuthModal }) {
-  // Testimonials Slider
-  const testimonials = [
-    {
-      quote: "PrepIntellect helped me identify three major communication flaws in my system design answers. The per-question AI feedback was incredibly helpful. Landed my Senior role at Stripe!",
-      author: "Elena R.",
-      role: "Senior Software Engineer",
-      stars: 5
-    },
-    {
-      quote: "The real-time camera tracking and terminal feed forced me to stop looking away. The behavioral guardrails made the mock feel just like a real high-stakes exam.",
-      author: "Marcus K.",
-      role: "L5 Engineer at Google",
-      stars: 5
-    },
-    {
-      quote: "The Text-to-Speech voices and prompt customization made me feel like I was speaking to a real recruiter. Highly recommend using it before any tech loop.",
-      author: "Priya S.",
-      role: "Fullstack Developer",
-      stars: 5
-    }
-  ];
 
-  const [activeTestimonial, setActiveTestimonial] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
-    }, 6000);
-    return () => clearInterval(interval);
-  }, [testimonials.length]);
-
-  const handlePrevTestimonial = () => {
-    setActiveTestimonial((prev) => (prev - 1 + testimonials.length) % testimonials.length);
-  };
-
-  const handleNextTestimonial = () => {
-    setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
-  };
 
   const cardVariants = {
     hidden: { opacity: 0, y: 30 },
@@ -535,67 +498,57 @@ export default function LandingPage({ onGetStarted, openAuthModal }) {
         </div>
       </section>
 
-      {/* ── TESTIMONIALS SECTION ────────────────────────────────── */}
-      <section className="max-w-4xl mx-auto px-6 relative z-10 text-center">
-        <span className="badge-purple mb-3">Feedback</span>
-        <h2 className="text-3xl font-bold text-white mb-10">Candidate Success Stories</h2>
-        
-        <div className="glass-card-strong p-8 md:p-12 relative overflow-hidden rounded-2xl border border-indigo-500/20">
-          <div className="absolute top-0 left-0 p-4 opacity-10 text-indigo-400 text-6xl font-serif">“</div>
+      {/* ── GRADING METHODOLOGY SECTION ──────────────────────────── */}
+      <section className="max-w-6xl mx-auto px-6 relative z-10">
+        <div className="text-center max-w-2xl mx-auto mb-16">
+          <span className="badge-purple mb-3">AI Evaluation</span>
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-4">
+            Our Grading Methodology
+          </h2>
+          <p className="text-gray-400 leading-relaxed">
+            PrepIntellect evaluates every answer across five distinct core communication dimensions, utilizing advanced AI models to compute structured feedback.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="glass-card-strong p-6 space-y-4">
+            <span className="text-xs font-bold text-indigo-400 font-mono block">01 / STRUCTURE</span>
+            <h3 className="text-base font-bold text-white">STAR Sequencing</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Assesses logical narrative flow and ensures responses follow the Situation, Task, Action, and Result format.
+            </p>
+          </div>
           
-          <div className="min-h-[160px] md:min-h-[120px] flex items-center justify-center">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeTestimonial}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.4 }}
-                className="space-y-4"
-              >
-                <div className="flex justify-center gap-1 text-yellow-500 mb-2">
-                  {Array.from({ length: testimonials[activeTestimonial].stars }).map((_, i) => (
-                    <FiStar key={i} className="fill-current text-amber-400" />
-                  ))}
-                </div>
-                <p className="text-sm sm:text-base md:text-lg italic text-gray-200 leading-relaxed max-w-2xl mx-auto">
-                  "{testimonials[activeTestimonial].quote}"
-                </p>
-                <div>
-                  <h4 className="text-sm font-bold text-white">{testimonials[activeTestimonial].author}</h4>
-                  <p className="text-xs text-gray-500 mt-0.5">{testimonials[activeTestimonial].role}</p>
-                </div>
-              </motion.div>
-            </AnimatePresence>
+          <div className="glass-card-strong p-6 space-y-4">
+            <span className="text-xs font-bold text-indigo-400 font-mono block">02 / RELEVANCE</span>
+            <h3 className="text-base font-bold text-white">Direct Alignment</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Measures how directly your answer addresses the interviewer's core questions and key technical prompts.
+            </p>
           </div>
 
-          <div className="flex justify-between items-center mt-8 pt-6 border-t border-white/5">
-            <div className="flex gap-1.5">
-              {testimonials.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setActiveTestimonial(idx)}
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    idx === activeTestimonial ? "w-6 bg-indigo-500" : "w-2 bg-white/20 hover:bg-white/40"
-                  }`}
-                />
-              ))}
-            </div>
-            
-            <div className="flex gap-2">
-              <button 
-                onClick={handlePrevTestimonial}
-                className="p-2 rounded-lg border border-white/10 hover:bg-white/5 text-gray-300 hover:text-white transition"
-              >
-                <FiChevronLeft />
-              </button>
-              <button 
-                onClick={handleNextTestimonial}
-                className="p-2 rounded-lg border border-white/10 hover:bg-white/5 text-gray-300 hover:text-white transition"
-              >
-                <FiChevronRight />
-              </button>
-            </div>
+          <div className="glass-card-strong p-6 space-y-4">
+            <span className="text-xs font-bold text-indigo-400 font-mono block">03 / SPECIFICITY</span>
+            <h3 className="text-base font-bold text-white">Quantitative Data</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Looks for concrete metrics, tool stack names, architecture choices, and detailed project case examples.
+            </p>
+          </div>
+
+          <div className="glass-card-strong p-6 space-y-4">
+            <span className="text-xs font-bold text-indigo-400 font-mono block">04 / CLARITY</span>
+            <h3 className="text-base font-bold text-white">Pacing & Phrasing</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Filters speaking telemetry, tracking filler words, sentence complexity, and overall words-per-minute pace.
+            </p>
+          </div>
+
+          <div className="glass-card-strong p-6 space-y-4">
+            <span className="text-xs font-bold text-indigo-400 font-mono block">05 / IMPACT</span>
+            <h3 className="text-base font-bold text-white">Business Outcomes</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Scores the results and contributions demonstrated in the context of team success and technical scalability.
+            </p>
           </div>
         </div>
       </section>
