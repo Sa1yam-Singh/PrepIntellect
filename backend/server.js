@@ -522,6 +522,29 @@ app.post("/api/users", async (req, res) => {
   }
 });
 
+// ── POST /api/users/onboarding ──────────────────────────────────
+app.post("/api/users/onboarding", async (req, res) => {
+  try {
+    const { email, targetRole, experienceLevel, timeline, companyName } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required." });
+    }
+    let user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+    user.targetRole = targetRole || user.targetRole;
+    user.experienceLevel = experienceLevel || user.experienceLevel;
+    user.timeline = timeline || user.timeline;
+    user.companyName = companyName || user.companyName;
+    user.onboarding_complete = true;
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/users/:email ───────────────────────────────────────
 app.get("/api/users/:email", async (req, res) => {
   try {
