@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { FilesetResolver, FaceLandmarker, ObjectDetector } from "@mediapipe/tasks-vision";
 import { FiVolume2, FiVolumeX, FiCpu, FiPhoneOff, FiMic, FiMicOff } from "react-icons/fi";
+import PermissionModal from "./PermissionModal";
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL 
@@ -26,6 +27,11 @@ export default function InterviewChamber({ sessionId, onComplete }) {
   const [guardrailLogs, setGuardrailLogs] = useState([]);
   const [infractions, setInfractions] = useState([]);
   const [webcamActive, setWebcamActive] = useState(false);
+
+  // Permission error modal state
+  const [permModalOpen, setPermModalOpen] = useState(false);
+  const [permErrorMsg, setPermErrorMsg] = useState("");
+  const [permType, setPermType] = useState("microphone");
   const [realtimeAlerts, setRealtimeAlerts] = useState({
     noFace: false,
     multipleFaces: false,
@@ -175,6 +181,9 @@ export default function InterviewChamber({ sessionId, onComplete }) {
         pushLog("Webcam stream active.", "success");
       } catch (err) {
         pushLog(`Camera access denied: ${err.message}`, "error");
+        setPermType("camera");
+        setPermErrorMsg(err.message || "Permission Blocked");
+        setPermModalOpen(true);
       }
     }
     initWebcam();
@@ -184,6 +193,32 @@ export default function InterviewChamber({ sessionId, onComplete }) {
       }
     };
   }, [pushLog]);
+
+  const retryPermissions = async () => {
+    if (permType === "camera") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: "user" },
+          audio: false
+        });
+        mediaStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        setWebcamActive(true);
+        pushLog("Webcam stream active.", "success");
+        setPermModalOpen(false);
+      } catch (err) {
+        pushLog(`Camera access denied: ${err.message}`, "error");
+        setPermType("camera");
+        setPermErrorMsg(err.message || "Permission Blocked");
+        setPermModalOpen(true);
+      }
+    } else if (permType === "microphone") {
+      stopMicStreaming();
+      await initMicStreaming();
+    }
+  };
 
   // ── Webcam Re-binding when Interview Starts ────────────────────────
   useEffect(() => {
@@ -490,8 +525,12 @@ export default function InterviewChamber({ sessionId, onComplete }) {
       };
 
       pushLog("Microphone streaming active. AI is listening...", "success");
+      setPermModalOpen(false);
     } catch (err) {
       pushLog(`Microphone access failed: ${err.message}`, "error");
+      setPermType("microphone");
+      setPermErrorMsg(err.message || "Permission Blocked");
+      setPermModalOpen(true);
     }
   };
 
@@ -1033,6 +1072,14 @@ export default function InterviewChamber({ sessionId, onComplete }) {
         )}
 
       </div>
+
+      <PermissionModal 
+        isOpen={permModalOpen} 
+        onClose={() => setPermModalOpen(false)} 
+        onRetry={retryPermissions} 
+        type={permType} 
+        errorMsg={permErrorMsg} 
+      />
     </div>
   );
 }

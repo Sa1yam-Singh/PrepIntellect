@@ -3,12 +3,18 @@ import {
   FiMic, FiMicOff, FiVideo, FiVideoOff, FiTv, FiMessageSquare, 
   FiCode, FiLogOut, FiCopy, FiCheckCircle, FiSend, FiUser, FiPlay 
 } from "react-icons/fi";
+import PermissionModal from "./PermissionModal";
 
 export default function MeetRoom({ code, onLeave, isPeerMatch }) {
   const [micActive, setMicActive] = useState(true);
   const [camActive, setCamActive] = useState(true);
   const [sharingScreen, setSharingScreen] = useState(false);
   const [copied, setCopied] = useState(false);
+  
+  // Permission error modal state
+  const [permModalOpen, setPermModalOpen] = useState(false);
+  const [permErrorMsg, setPermErrorMsg] = useState("");
+  const [permType, setPermType] = useState("both");
   
   // Tab control: "chat" | "editor"
   const [activeTab, setActiveTab] = useState("editor");
@@ -58,6 +64,9 @@ export default function MeetRoom({ code, onLeave, isPeerMatch }) {
       } catch (err) {
         console.warn("Could not access camera/mic stream:", err.message);
         setCamActive(false);
+        setPermType("both");
+        setPermErrorMsg(err.message || "Permission Blocked");
+        setPermModalOpen(true);
       }
     }
     
@@ -94,6 +103,31 @@ export default function MeetRoom({ code, onLeave, isPeerMatch }) {
       }
     };
   }, [code]);
+
+  const retryPermissions = async () => {
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
+      streamRef.current = stream;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+      setCamActive(true);
+      setMicActive(true);
+      setPermModalOpen(false);
+    } catch (err) {
+      console.warn("Could not access camera/mic stream:", err.message);
+      setCamActive(false);
+      setPermType("both");
+      setPermErrorMsg(err.message || "Permission Blocked");
+      setPermModalOpen(true);
+    }
+  };
 
   // Handle Mute Mic
   const toggleMic = () => {
@@ -491,6 +525,13 @@ export default function MeetRoom({ code, onLeave, isPeerMatch }) {
 
       </div>
 
+      <PermissionModal 
+        isOpen={permModalOpen} 
+        onClose={() => setPermModalOpen(false)} 
+        onRetry={retryPermissions} 
+        type={permType} 
+        errorMsg={permErrorMsg} 
+      />
     </div>
   );
 }
