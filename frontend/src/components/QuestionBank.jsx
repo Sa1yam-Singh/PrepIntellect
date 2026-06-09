@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { FiSearch, FiStar, FiFilter, FiCheck, FiPlay, FiBookOpen } from "react-icons/fi";
+import { motion } from "framer-motion";
 import axios from "axios";
 
 const API = axios.create({
