@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { FiMenu, FiX, FiUser, FiLogOut, FiHelpCircle, FiGrid, FiChevronDown, FiSettings, FiBarChart2 } from "react-icons/fi";
+import { FiMenu, FiX, FiUser, FiLogOut, FiHelpCircle, FiGrid, FiChevronDown, FiSettings, FiBarChart2, FiSun, FiMoon } from "react-icons/fi";
 
-export default function Header({ currentView, setView, user, onLogout, openAuthModal }) {
+export default function Header({ currentView, setView, user, onLogout, openAuthModal, theme, setTheme }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -172,13 +172,24 @@ export default function Header({ currentView, setView, user, onLogout, openAuthM
           )}
         </div>
 
-        {/* Mobile Menu Button */}
-        <button 
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="rounded-xl border border-white/10 bg-white/5 p-2.5 text-gray-400 hover:text-white hover:bg-white/10 md:hidden transition-all"
-        >
-          {mobileMenuOpen ? <FiX className="text-lg" /> : <FiMenu className="text-lg" />}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Theme Toggle Button */}
+          <button
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            className="rounded-xl border border-white/10 bg-white/5 p-2.5 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+            title="Toggle Light/Dark Theme"
+          >
+            {theme === "light" ? <FiMoon className="text-lg" /> : <FiSun className="text-lg" />}
+          </button>
+
+          {/* Mobile Menu Button */}
+          <button 
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="rounded-xl border border-white/10 bg-white/5 p-2.5 text-gray-400 hover:text-white hover:bg-white/10 md:hidden transition-all"
+          >
+            {mobileMenuOpen ? <FiX className="text-lg" /> : <FiMenu className="text-lg" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Navigation Drawer */}

@@ -473,17 +473,31 @@ app.get("/api/health", (_req, res) => {
 // ── Create or Update User (upsert / onboarding) ──────────────────
 app.post("/api/users", async (req, res) => {
   try {
-    const { name, email, targetRole, experienceLevel, skillsKeywords, organization, category } = req.body;
+    const { 
+      name, 
+      email, 
+      targetRole, 
+      experienceLevel, 
+      skillsKeywords, 
+      organization, 
+      category,
+      onboarding_complete,
+      timeline,
+      companyName
+    } = req.body;
     
     // Find existing user by email
     let user = await User.findOne({ email });
     if (user) {
       user.name = name || user.name;
-      user.targetRole = targetRole || user.targetRole;
-      user.experienceLevel = experienceLevel || user.experienceLevel;
-      user.skillsKeywords = skillsKeywords || user.skillsKeywords;
-      user.organization = organization || user.organization;
-      user.category = category || user.category;
+      user.targetRole = targetRole !== undefined ? targetRole : user.targetRole;
+      user.experienceLevel = experienceLevel !== undefined ? experienceLevel : user.experienceLevel;
+      user.skillsKeywords = skillsKeywords !== undefined ? skillsKeywords : user.skillsKeywords;
+      user.organization = organization !== undefined ? organization : user.organization;
+      user.category = category !== undefined ? category : user.category;
+      if (onboarding_complete !== undefined) user.onboarding_complete = onboarding_complete;
+      if (timeline !== undefined) user.timeline = timeline;
+      if (companyName !== undefined) user.companyName = companyName;
       await user.save();
       return res.status(200).json(user);
     }
@@ -496,6 +510,9 @@ app.post("/api/users", async (req, res) => {
       skillsKeywords,
       organization: organization || "Personal",
       category: category || "Engineering",
+      onboarding_complete: onboarding_complete || false,
+      timeline: timeline || "",
+      companyName: companyName || "",
     });
     res.status(201).json(user);
   } catch (err) {

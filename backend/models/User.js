@@ -38,6 +38,20 @@ const userSchema = new mongoose.Schema(
       default: "Personal",
       trim: true,
     },
+    onboarding_complete: {
+      type: Boolean,
+      default: false,
+    },
+    timeline: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    companyName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
   },
   { timestamps: true }
 );

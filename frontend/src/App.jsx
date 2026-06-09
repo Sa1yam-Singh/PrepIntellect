@@ -10,6 +10,7 @@ import InterviewChamber from "./components/InterviewChamber";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import MeetRoom from "./components/MeetRoom";
 import ProfilePage from "./components/ProfilePage";
+import OnboardingModal from "./components/OnboardingModal";
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL 
@@ -27,6 +28,16 @@ export default function App() {
     return savedMock ? JSON.parse(savedMock) : null;
   });
   const [authModal, setAuthModal] = useState({ isOpen: false, mode: "login" });
+  
+  // Theme state & Onboarding modal state
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
+  // Sync theme attribute to HTML tag
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   // ── Session data ────────────────────────────────────────────────
   const [userId, setUserId] = useState(() => {
@@ -75,8 +86,16 @@ export default function App() {
           userData.targetRole = dbRes.data.targetRole || "Software Engineer";
           userData.experienceLevel = dbRes.data.experienceLevel || "Mid-Level";
           userData.skillsKeywords = dbRes.data.skillsKeywords || [];
+          userData.onboarding_complete = dbRes.data.onboarding_complete !== undefined ? dbRes.data.onboarding_complete : false;
+          userData.timeline = dbRes.data.timeline || "";
+          userData.companyName = dbRes.data.companyName || "";
+          
+          if (userData.onboarding_complete === false) {
+            setOnboardingOpen(true);
+          }
         } catch (err) {
           console.log("User not found in database yet.");
+          setOnboardingOpen(true); // new user, prompt onboarding
         }
 
         setUser(userData);
@@ -106,8 +125,16 @@ export default function App() {
             userData.targetRole = dbRes.data.targetRole || "Software Engineer";
             userData.experienceLevel = dbRes.data.experienceLevel || "Mid-Level";
             userData.skillsKeywords = dbRes.data.skillsKeywords || [];
+            userData.onboarding_complete = dbRes.data.onboarding_complete !== undefined ? dbRes.data.onboarding_complete : false;
+            userData.timeline = dbRes.data.timeline || "";
+            userData.companyName = dbRes.data.companyName || "";
+            
+            if (userData.onboarding_complete === false) {
+              setOnboardingOpen(true);
+            }
           } catch (err) {
             console.log("Mock user not found in database yet.");
+            setOnboardingOpen(true);
           }
 
           setUser(userData);
@@ -179,17 +206,63 @@ export default function App() {
     setAuthModal(prev => ({ ...prev, isOpen: false }));
   };
 
-  const handleAuthSuccess = (userData) => {
+  const handleAuthSuccess = async (userData) => {
     setUser(userData);
     if (userData.uid.startsWith("mock-")) {
       sessionStorage.setItem("prep_intellect_mock_user", JSON.stringify(userData));
     }
+    
+    // Check onboarding for mock user
+    try {
+      const dbRes = await API.get(`/users/${encodeURIComponent(userData.email)}`);
+      setUserId(dbRes.data._id);
+      if (dbRes.data.onboarding_complete === false) {
+        setOnboardingOpen(true);
+      }
+    } catch (err) {
+      setOnboardingOpen(true);
+    }
+
     setForm(prev => ({
       ...prev,
       name: userData.name || prev.name,
       email: userData.email || prev.email
     }));
     setView("dashboard");
+  };
+
+  const handleOnboardingComplete = async (onboardingData) => {
+    try {
+      const payload = {
+        name: user.name,
+        email: user.email,
+        ...onboardingData
+      };
+      
+      const res = await API.post("/users", payload);
+      setUserId(res.data._id);
+      
+      const updatedUser = {
+        ...user,
+        targetRole: res.data.targetRole,
+        experienceLevel: res.data.experienceLevel,
+        timeline: res.data.timeline,
+        companyName: res.data.companyName,
+        onboarding_complete: true
+      };
+      
+      setUser(updatedUser);
+      setForm(prev => ({
+        ...prev,
+        targetRole: res.data.targetRole,
+        experienceLevel: res.data.experienceLevel,
+        skillsKeywords: res.data.skillsKeywords?.join(", ") || prev.skillsKeywords
+      }));
+      setOnboardingOpen(false);
+      setView("dashboard");
+    } catch (err) {
+      console.error("Failed to complete onboarding", err);
+    }
   };
 
   const handleLogout = () => {
@@ -300,6 +373,8 @@ export default function App() {
         user={user} 
         onLogout={handleLogout} 
         openAuthModal={handleOpenAuth} 
+        theme={theme}
+        setTheme={setTheme}
       />
 
       {/* Main Content Router */}
@@ -571,6 +646,13 @@ export default function App() {
         )}
 
       </main>
+
+      <OnboardingModal
+        isOpen={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        onComplete={handleOnboardingComplete}
+        userEmail={user?.email}
+      />
 
       {/* Global Auth Modal Overlay */}
       <AuthModal 
