@@ -414,59 +414,79 @@
 }
 
 /* ── Light Mode UI Overrides ────────────────────────────────────── */
-[data-theme="light"] .text-white {
-  color: var(--text-primary) !important;
-}
-[data-theme="light"] .text-gray-100 {
-  color: var(--text-primary) !important;
-}
-[data-theme="light"] .text-gray-200 {
-  color: var(--text-primary) !important;
-}
+[data-theme="light"] .text-white,
+[data-theme="light"] .text-gray-100,
+[data-theme="light"] .text-gray-200,
 [data-theme="light"] .text-gray-300 {
   color: var(--text-primary) !important;
 }
-[data-theme="light"] .text-gray-400 {
-  color: var(--text-secondary) !important;
-}
+
+[data-theme="light"] .text-gray-400,
 [data-theme="light"] .text-gray-500 {
   color: var(--text-secondary) !important;
 }
-[data-theme="light"] .bg-navy-950 {
+
+[data-theme="light"] .text-indigo-300,
+[data-theme="light"] .text-indigo-200 {
+  color: #4f46e5 !important; /* Indigo-600 */
+}
+
+[data-theme="light"] .text-purple-300 {
+  color: #7c3aed !important; /* Purple-600 */
+}
+
+[data-theme="light"] .text-cyan-300 {
+  color: #0891b2 !important; /* Cyan-600 */
+}
+
+[data-theme="light"] .text-emerald-300 {
+  color: #059669 !important; /* Emerald-600 */
+}
+
+[data-theme="light"] .text-rose-300,
+[data-theme="light"] .text-rose-400,
+[data-theme="light"] .text-rose-500 {
+  color: #dc2626 !important; /* Rose-600 */
+}
+
+[data-theme="light"] [class*="bg-navy-950"] {
   background-color: var(--bg-primary) !important;
+  background-image: none !important;
 }
-[data-theme="light"] .bg-navy-900 {
+
+[data-theme="light"] [class*="bg-navy-900"] {
   background-color: var(--bg-secondary) !important;
+  background-image: none !important;
 }
-[data-theme="light"] .border-white\/10 {
+
+[data-theme="light"] [class*="bg-navy-800"] {
+  background-color: var(--bg-secondary) !important;
+  background-image: none !important;
+}
+
+[data-theme="light"] [class*="bg-navy-700"] {
+  background-color: var(--border-color) !important;
+  background-image: none !important;
+}
+
+[data-theme="light"] [class*="bg-white/"] {
+  background-color: rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-theme="light"] [class*="border-white/"] {
   border-color: var(--border-color) !important;
 }
-[data-theme="light"] .border-white\/5 {
-  border-color: var(--border-color) !important;
-}
-[data-theme="light"] .bg-white\/5 {
-  background-color: var(--bg-input) !important;
-}
-[data-theme="light"] .bg-white\/10 {
-  background-color: var(--bg-glass-card-hover) !important;
-}
+
 [data-theme="light"] .glass-card {
   background-color: var(--bg-glass-card) !important;
   border-color: var(--border-color) !important;
 }
+
 [data-theme="light"] .glass-card-strong {
   background: var(--bg-glass-card-strong) !important;
   border-color: var(--border-color) !important;
 }
-[data-theme="light"] .bg-navy-950\/80 {
-  background-color: rgba(248, 250, 252, 0.8) !important;
-}
-[data-theme="light"] .bg-navy-900\/50 {
-  background-color: rgba(241, 245, 249, 0.5) !important;
-}
-[data-theme="light"] .bg-navy-950\/40 {
-  background-color: rgba(248, 250, 252, 0.4) !important;
-}
+
 [data-theme="light"] .bg-\[\#080c14\],
 [data-theme="light"] .bg-\[\#090d16\],
 [data-theme="light"] .bg-\[\#070b13\],
