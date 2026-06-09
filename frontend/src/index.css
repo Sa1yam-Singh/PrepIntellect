@@ -370,18 +370,28 @@
   }
 
   .bg-grid-pattern {
+    position: relative;
+  }
+
+  .bg-grid-pattern::before {
+    content: '';
+    position: absolute;
+    inset: -80px;
     background-size: 40px 40px;
     background-image: linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
                       linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+    z-index: -1;
+    pointer-events: none;
+    will-change: transform;
   }
 
-  .bg-grid-animate {
-    animation: gridMove 20s linear infinite;
+  .bg-grid-animate::before {
+    animation: gridMove 30s linear infinite;
   }
 
   @keyframes gridMove {
-    0% { background-position: 0 0; }
-    100% { background-position: 40px 40px; }
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(40px, 40px, 0); }
   }
 
   .cyber-glow {

@@ -11,6 +11,11 @@ import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import MeetRoom from "./components/MeetRoom";
 import ProfilePage from "./components/ProfilePage";
 import OnboardingModal from "./components/OnboardingModal";
+import ResumePage from "./components/ResumePage";
+import QuestionBank from "./components/QuestionBank";
+import PracticeSession from "./components/PracticeSession";
+import PublicReport from "./components/PublicReport";
+import { FiX, FiCpu, FiFileText, FiBookOpen, FiUser, FiActivity } from "react-icons/fi";
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL 
@@ -55,6 +60,53 @@ export default function App() {
   const [isPeerMatch, setIsPeerMatch] = useState(() => {
     return sessionStorage.getItem("prep_intellect_is_peer_match") === "true";
   });
+  const [practiceQuestion, setPracticeQuestion] = useState(null);
+  const [publicReportId, setPublicReportId] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [paletteSearch, setPaletteSearch] = useState("");
+
+  const addToast = useCallback((message, type = "info") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  // Listen for public report paths on boot
+  useEffect(() => {
+    const path = window.location.pathname;
+    const match = path.match(/\/report\/([a-fA-F0-9]{24})/);
+    if (match) {
+      setPublicReportId(match[1]);
+      setView("public-report");
+    }
+  }, []);
+
+  // Global Keyboard Shortcuts Effect
+  useEffect(() => {
+    const handleGlobalKeys = (e) => {
+      const isInput = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
+      
+      // '?' opens shortcuts sheet (only if not writing in inputs)
+      if (e.key === "?" && !isInput) {
+        e.preventDefault();
+        setShowShortcuts(prev => !prev);
+      }
+
+      // Ctrl + K opens Command Palette
+      if (e.ctrlKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowPalette(prev => !prev);
+        setPaletteSearch("");
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeys);
+    return () => window.removeEventListener("keydown", handleGlobalKeys);
+  }, []);
 
   // ── Interview config form state ─────────────────────────────────
   const [form, setForm] = useState({
@@ -395,6 +447,12 @@ export default function App() {
             onStartAIMock={handleStartAIMock} 
             onBackToLanding={() => setView("landing")} 
             onJoinMeetRoom={handleJoinMeetRoom}
+            onViewReport={(sessId, evaluationData) => {
+              setSessionId(sessId);
+              setEvaluation(evaluationData);
+              setView("analytics");
+            }}
+            navigateToView={setView}
           />
         )}
 
@@ -618,6 +676,7 @@ export default function App() {
             sessionId={sessionId}
             evaluation={evaluation}
             onRestart={() => setView("dashboard")}
+            addToast={addToast}
           />
         )}
 
@@ -645,6 +704,48 @@ export default function App() {
           />
         )}
 
+        {/* Resume Uploader & AI Question Generator View */}
+        {view === "resume" && (
+          <ResumePage 
+            onStartPractice={(question) => {
+              setPracticeQuestion(question);
+              setView("practice");
+            }}
+            addToast={addToast}
+          />
+        )}
+
+        {/* Curated Question Bank View */}
+        {view === "question-bank" && (
+          <QuestionBank 
+            user={user}
+            onStartPractice={(question) => {
+              setPracticeQuestion(question);
+              setView("practice");
+            }}
+            addToast={addToast}
+          />
+        )}
+
+        {/* Practice Sandbox modal wrapper */}
+        {view === "practice" && practiceQuestion && (
+          <PracticeSession 
+            questionText={practiceQuestion}
+            onClose={() => {
+              setPracticeQuestion(null);
+              setView("dashboard");
+            }}
+            addToast={addToast}
+          />
+        )}
+
+        {/* Shared Public Report view */}
+        {view === "public-report" && publicReportId && (
+          <PublicReport 
+            sessionId={publicReportId} 
+          />
+        )}
+
       </main>
 
       <OnboardingModal
@@ -661,6 +762,154 @@ export default function App() {
         initialMode={authModal.mode} 
         onAuthSuccess={handleAuthSuccess}
       />
+
+      {/* Keyboard Shortcuts Sheet Overlay */}
+      {showShortcuts && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm glass-card-strong p-6 space-y-4 text-left animate-scale-in">
+            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                Keyboard Shortcuts
+              </h4>
+              <button 
+                onClick={() => setShowShortcuts(false)} 
+                className="text-gray-500 hover:text-white"
+              >
+                <FiX />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                <span className="text-gray-400 font-medium">Open Cheat Sheet</span>
+                <kbd className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold text-indigo-300">?</kbd>
+              </div>
+              <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                <span className="text-gray-400 font-medium">Command Palette</span>
+                <kbd className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold text-indigo-300">Ctrl + K</kbd>
+              </div>
+              <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                <span className="text-gray-400 font-medium">Toggle Voice Record</span>
+                <kbd className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold text-indigo-300">R</kbd>
+              </div>
+              <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                <span className="text-gray-400 font-medium">Submit Response</span>
+                <kbd className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold text-indigo-300">Ctrl + Enter</kbd>
+              </div>
+              <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                <span className="text-gray-400 font-medium">Next Question</span>
+                <kbd className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold text-indigo-300">Ctrl + →</kbd>
+              </div>
+              <div className="flex justify-between items-center pb-0.5">
+                <span className="text-gray-400 font-medium">Exit Active Practice</span>
+                <kbd className="bg-white/10 px-2 py-0.5 rounded font-mono font-bold text-indigo-300">Esc</kbd>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Command Palette Modal */}
+      {showPalette && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg glass-card-strong p-4 space-y-3 text-left animate-slide-down">
+            <div className="relative">
+              <input 
+                type="text" 
+                placeholder="Type a page or command to navigate..."
+                value={paletteSearch}
+                onChange={(e) => setPaletteSearch(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-navy-950 px-4 py-3 text-xs text-white placeholder-gray-500 outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                autoFocus
+              />
+            </div>
+            
+            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+              {[
+                { title: "Go to Dashboard Hub", view: "dashboard" },
+                { title: "Analyze Resume (Upload)", view: "resume" },
+                { title: "Curated Question Bank", view: "question-bank" },
+                { title: "My Profile Details", view: "profile" },
+                { title: "Launch AI Mock Interview", view: "onboarding" },
+              ]
+                .filter(opt => opt.title.toLowerCase().includes(paletteSearch.toLowerCase()))
+                .map((opt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setView(opt.view);
+                      setShowPalette(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 text-xs text-gray-300 hover:bg-white/5 rounded-xl font-semibold flex items-center justify-between transition-colors"
+                  >
+                    <span>{opt.title}</span>
+                    <kbd className="bg-white/5 px-2 py-0.5 rounded text-[10px] font-mono text-gray-500">Enter ⏎</kbd>
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Notification Alerts System */}
+      <div className="fixed top-6 right-6 z-50 space-y-3 pointer-events-none">
+        {toasts.map((toast) => (
+          <div 
+            key={toast.id}
+            className={`p-4 rounded-xl border shadow-xl flex items-center justify-between gap-4 pointer-events-auto animate-slide-left min-w-[280px] max-w-sm ${
+              toast.type === "success" ? "bg-emerald-950/90 border-emerald-500/30 text-emerald-200" :
+              toast.type === "error" ? "bg-rose-950/90 border-rose-500/30 text-rose-200" :
+              toast.type === "warning" ? "bg-yellow-950/90 border-yellow-500/30 text-yellow-200" :
+              "bg-indigo-950/90 border-indigo-500/30 text-indigo-200"
+            }`}
+          >
+            <span className="text-xs font-semibold">{toast.message}</span>
+            <button 
+              onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+              className="text-gray-400 hover:text-white shrink-0"
+            >
+              <FiX />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Mobile Bottom Tab Bar */}
+      {user && (
+        <div className="md:hidden fixed bottom-0 inset-x-0 bg-navy-950/95 border-t border-white/10 backdrop-blur-xl z-30 py-2.5 px-6 flex justify-around items-center">
+          <button 
+            onClick={() => setView("dashboard")}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold ${view === "dashboard" ? "text-indigo-400" : "text-gray-500 hover:text-gray-300"}`}
+          >
+            <FiCpu className="text-lg" />
+            <span className="text-[10px] tracking-wide">Home</span>
+          </button>
+          
+          <button 
+            onClick={() => setView("resume")}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold ${view === "resume" ? "text-indigo-400" : "text-gray-500 hover:text-gray-300"}`}
+          >
+            <FiFileText className="text-lg" />
+            <span className="text-[10px] tracking-wide">Practice</span>
+          </button>
+
+          <button 
+            onClick={() => setView("question-bank")}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold ${view === "question-bank" ? "text-indigo-400" : "text-gray-500 hover:text-gray-300"}`}
+          >
+            <FiBookOpen className="text-lg" />
+            <span className="text-[10px] tracking-wide">Questions</span>
+          </button>
+
+          <button 
+            onClick={() => setView("profile")}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold ${view === "profile" ? "text-indigo-400" : "text-gray-500 hover:text-gray-300"}`}
+          >
+            <FiUser className="text-lg" />
+            <span className="text-[10px] tracking-wide">Profile</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

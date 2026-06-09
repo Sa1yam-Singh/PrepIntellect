@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import { FiShare2, FiDownload, FiCopy, FiCheck, FiX, FiInfo } from "react-icons/fi";
 import {
   RadarChart,
   PolarGrid,
@@ -113,8 +114,131 @@ const getAudioUrl = (url) => {
   return `${cleanBackendUrl}${cleanUrl}`;
 };
 
-export default function AnalyticsDashboard({ sessionId, evaluation, onRestart }) {
+export default function AnalyticsDashboard({ sessionId, evaluation, onRestart, addToast }) {
   const [session, setSession] = useState(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+
+  const handleCopyLink = () => {
+    const link = `${window.location.origin}/report/${sessionId}`;
+    navigator.clipboard.writeText(link);
+    setCopiedLink(true);
+    addToast("Public report link copied to clipboard!", "success");
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleDownloadPDF = async () => {
+    setPdfGenerating(true);
+    addToast("Generating PDF download...", "info");
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      // Simple, beautiful PDF structure
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(99, 102, 241);
+      doc.text("PrepIntellect AI Interview Report", 15, 20);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128);
+      doc.text(`Date Generated: ${new Date().toLocaleDateString()}`, 15, 26);
+      doc.text(`Session ID: ${sessionId}`, 15, 31);
+      doc.text(`Role Target: ${session?.userId?.targetRole || "Candidate"} (${session?.userId?.experienceLevel || "Mid-Level"})`, 15, 36);
+
+      doc.setDrawColor(229, 231, 235);
+      doc.line(15, 40, 195, 40);
+
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(15, 23, 42);
+      doc.text("Evaluation Summary", 15, 48);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(11);
+      doc.text(`Overall Score: ${overallScore}% (Grade: ${overallGrade})`, 15, 56);
+      doc.text(`Technical Score: ${evaluation?.technicalScore || 0}/100`, 15, 62);
+      doc.text(`Communication Score: ${evaluation?.communicationScore || 0}/100`, 15, 68);
+      doc.text(`Problem Solving Score: ${evaluation?.problemSolvingScore || 0}/100`, 15, 74);
+
+      doc.setFont("Helvetica", "bold");
+      doc.text("Key Strengths:", 15, 84);
+      doc.setFont("Helvetica", "normal");
+      let currentY = 90;
+      (evaluation?.strengths || []).slice(0, 3).forEach((s) => {
+        const textLines = doc.splitTextToSize(`- ${s}`, 170);
+        doc.text(textLines, 15, currentY);
+        currentY += textLines.length * 6;
+      });
+
+      currentY += 4;
+      doc.setFont("Helvetica", "bold");
+      doc.text("Areas for Improvement:", 15, currentY);
+      doc.setFont("Helvetica", "normal");
+      currentY += 6;
+      (evaluation?.weaknesses || []).slice(0, 3).forEach((w) => {
+        const textLines = doc.splitTextToSize(`- ${w}`, 170);
+        doc.text(textLines, 15, currentY);
+        currentY += textLines.length * 6;
+      });
+
+      currentY += 4;
+      doc.setFont("Helvetica", "bold");
+      doc.text("Actionable Tips:", 15, currentY);
+      doc.setFont("Helvetica", "normal");
+      currentY += 6;
+      (evaluation?.improvementTips || []).slice(0, 3).forEach((tip, idx) => {
+        const textLines = doc.splitTextToSize(`${idx + 1}. ${tip}`, 170);
+        doc.text(textLines, 15, currentY);
+        currentY += textLines.length * 6;
+      });
+
+      if (session?.chatHistory?.length > 0) {
+        doc.addPage();
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(99, 102, 241);
+        doc.text("Interview Q&A Transcript Review", 15, 20);
+        doc.setDrawColor(229, 231, 235);
+        doc.line(15, 24, 195, 24);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(15, 23, 42);
+        
+        let qaY = 32;
+        session.chatHistory.forEach((q, idx) => {
+          if (qaY > 260) {
+            doc.addPage();
+            qaY = 20;
+          }
+          doc.setFont("Helvetica", "bold");
+          const qLines = doc.splitTextToSize(`Q${idx + 1}: ${q.question}`, 175);
+          doc.text(qLines, 15, qaY);
+          qaY += qLines.length * 5;
+          
+          doc.setFont("Helvetica", "oblique");
+          const ansLines = doc.splitTextToSize(`Answer: "${q.transcribedAnswer || "No response."}"`, 175);
+          doc.text(ansLines, 15, qaY);
+          qaY += ansLines.length * 5 + 6;
+        });
+      }
+
+      doc.save(`PrepIntellect_Report_${sessionId.slice(-8)}.pdf`);
+      addToast("Report downloaded successfully!", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Failed to compile PDF.", "error");
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
 
   useEffect(() => {
     async function fetchSession() {
@@ -182,12 +306,22 @@ export default function AnalyticsDashboard({ sessionId, evaluation, onRestart })
             Session <span className="font-mono text-gray-400">{sessionId?.slice(-8)}</span> — Evaluation Complete
           </p>
         </div>
-        <button onClick={onRestart} className="btn-primary">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-          </svg>
-          Start New Interview
-        </button>
+        <div className="flex items-center gap-2">
+          {session?.chatHistory?.length >= 3 && (
+            <button 
+              onClick={() => setShowShareModal(true)} 
+              className="btn-secondary py-2.5 px-4 text-xs font-bold flex items-center gap-1.5"
+            >
+              <FiShare2 /> Generate Report
+            </button>
+          )}
+          <button onClick={onRestart} className="btn-primary py-2.5 px-4 text-xs font-bold flex items-center gap-1.5">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+            </svg>
+            Start New Interview
+          </button>
+        </div>
       </div>
 
       {/* ── Score Rings Row ─────────────────────────────────────── */}
@@ -436,6 +570,74 @@ export default function AnalyticsDashboard({ sessionId, evaluation, onRestart })
           PrepIntellect — AI-Powered Mock Interview & Behavioral Analytics Suite
         </p>
       </div>
+
+      {/* ── Shareable Report Modal ───────────────────────────────── */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md glass-card-strong p-6 space-y-5 text-left animate-scale-in">
+            <div className="flex justify-between items-start border-b border-white/5 pb-3">
+              <h4 className="text-base font-bold text-white flex items-center gap-2">
+                <FiShare2 className="text-indigo-400" /> Share & Export Report
+              </h4>
+              <button 
+                onClick={() => setShowShareModal(false)}
+                className="text-gray-500 hover:text-white"
+              >
+                <FiX />
+              </button>
+            </div>
+            
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Generate a public read-only link to share your grading panel and transcript review with mentors or download an offline PDF document.
+            </p>
+
+            {/* Public Link */}
+            <div className="space-y-1.5">
+              <span className="block text-[10px] uppercase font-bold text-gray-500 tracking-wider">Shareable link (Public read-only)</span>
+              <div className="flex gap-2">
+                <div className="flex-1 bg-navy-950/80 border border-white/10 rounded-xl px-3 py-2 text-xs text-indigo-300 font-mono truncate select-all">
+                  {`${window.location.origin}/report/${sessionId}`}
+                </div>
+                <button 
+                  onClick={handleCopyLink}
+                  className="btn-secondary py-2 px-3 text-xs shrink-0 flex items-center justify-center border-indigo-500/20"
+                >
+                  {copiedLink ? <FiCheck className="text-emerald-400" /> : <FiCopy />}
+                </button>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={handleDownloadPDF}
+                disabled={pdfGenerating}
+                className="btn-primary flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5"
+              >
+                {pdfGenerating ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Compiling PDF...
+                  </>
+                ) : (
+                  <>
+                    <FiDownload /> Download PDF Report
+                  </>
+                )}
+              </button>
+              <button 
+                onClick={() => setShowShareModal(false)}
+                className="btn-secondary py-2.5 px-4 text-xs font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,6 +11,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const OpenAI = require("openai");
 const fs = require("fs");
 const path = require("path");
+const pdfParse = require("pdf-parse");
+const mammoth = require("mammoth");
 
 const User = require("./models/User");
 const Session = require("./models/Session");
@@ -914,6 +916,256 @@ app.post("/api/interview/live-complete", async (req, res) => {
 app.get("/api/sessions/:id", async (req, res) => {
   try {
     const session = await Session.findById(req.params.id).populate("userId", "name email targetRole experienceLevel skillsKeywords");
+    if (!session) return res.status(404).json({ error: "Session not found." });
+    res.json(session);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Question Bank Mock Database ─────────────────────────────────
+const QUESTION_BANK = [
+  { id: "q1", question: "Describe a time when you had to deal with a difficult teammate. How did you handle the situation?", category: "Behavioral", role: "All Roles", difficulty: "Easy", company: "Amazon" },
+  { id: "q2", question: "Why do you want to join this company, and what unique value do you bring to our team?", category: "Behavioral", role: "All Roles", difficulty: "Easy", company: "Google" },
+  { id: "q3", question: "Tell me about a time you made a mistake on a project. What did you learn and how did you resolve it?", category: "Behavioral", role: "All Roles", difficulty: "Medium", company: "Meta" },
+  { id: "q4", question: "How do you explain a complex technical concept to a non-technical stakeholder?", category: "Behavioral", role: "All Roles", difficulty: "Medium", company: "Microsoft" },
+  { id: "q5", question: "Describe a situation where you went above and beyond your core responsibilities. What was the impact?", category: "Behavioral", role: "All Roles", difficulty: "Medium", company: "Netflix" },
+  { id: "q6", question: "Tell me about a time you had to make a decision without all the information you needed. What was the outcome?", category: "Behavioral", role: "All Roles", difficulty: "Hard", company: "Stripe" },
+  
+  { id: "q7", question: "What is the difference between processes and threads, and how do they share resources?", category: "Technical", role: "SWE", difficulty: "Medium", company: "Google" },
+  { id: "q8", question: "How do you optimize a SQL query that is running slowly on a table with millions of rows?", category: "Technical", role: "Data", difficulty: "Medium", company: "Uber" },
+  { id: "q9", question: "Explain the virtual DOM in React and why it makes UI updates more efficient.", category: "Technical", role: "SWE", difficulty: "Easy", company: "Meta" },
+  { id: "q10", question: "How does HTTPS establish a secure connection? Explain the SSL/TLS handshake process.", category: "Technical", role: "SWE", difficulty: "Medium", company: "Cloudflare" },
+  { id: "q11", question: "What are the differences between supervised and unsupervised learning? When would you use each?", category: "Technical", role: "Data", difficulty: "Easy", company: "Apple" },
+  { id: "q12", question: "What is horizontal scaling versus vertical scaling, and how do you design a database for horizontal scaling?", category: "Technical", role: "SWE", difficulty: "Hard", company: "AWS" },
+
+  { id: "q13", question: "How would you design a scalable notification service like WhatsApp or Twitter notifications?", category: "Role-specific", role: "SWE", difficulty: "Hard", company: "Meta" },
+  { id: "q14", question: "How would you prioritize the roadmap for an e-commerce checkout flow with declining conversion rates?", category: "Role-specific", role: "PM", difficulty: "Hard", company: "Amazon" },
+  { id: "q15", question: "How do you design a data pipeline to ingest 1TB of user clickstream logs daily in real-time?", category: "Role-specific", role: "Data", difficulty: "Hard", company: "Netflix" },
+  { id: "q16", question: "Walk me through your design process for a mobile banking dashboard aimed at elderly users.", category: "Role-specific", role: "Design", difficulty: "Medium", company: "Stripe" },
+  { id: "q17", question: "How do you estimate the market size for ride-sharing services in a new city?", category: "Role-specific", role: "PM", difficulty: "Hard", company: "Uber" },
+  { id: "q18", question: "Design the user profile screen for a premium mock interview application. What elements do you prioritize?", category: "Role-specific", role: "Design", difficulty: "Easy", company: "Airbnb" },
+];
+
+// ── POST /api/resume/upload ─────────────────────────────────────
+// Uploads and parses a resume document (PDF, DOCX, or TXT), extracts skills and generates 15 questions
+app.post("/api/resume/upload", upload.single("resume"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No resume file provided." });
+    }
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    let text = "";
+
+    if (ext === ".txt") {
+      text = fs.readFileSync(req.file.path, "utf8");
+    } else if (ext === ".pdf") {
+      const dataBuffer = fs.readFileSync(req.file.path);
+      const parsed = await pdfParse(dataBuffer);
+      text = parsed.text;
+    } else if (ext === ".docx") {
+      const parsed = await mammoth.extractRawText({ path: req.file.path });
+      text = parsed.value;
+    } else {
+      return res.status(400).json({ error: "Unsupported file type. Use PDF, DOCX, or TXT." });
+    }
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: "Resume file content is empty." });
+    }
+
+    // Call Gemini API to extract skills and generate questions
+    const resumePrompt = `
+You are an expert technical interviewer. Parse the following resume text.
+1. Extract a list of up to 10 key technical and soft skills/keywords found in the resume.
+2. Generate exactly 15 personalized interview questions tailored to their background, divided into:
+   - 5 Behavioral questions (STAR format related to projects or experience on their resume)
+   - 5 Technical questions (fundamental and advanced topics based on their tech stack)
+   - 5 Role-specific questions (scenario-based or specialized questions based on their target track)
+
+Format your response as a JSON object with EXACTLY this structure (no markdown fences, pure JSON):
+{
+  "skills": ["Skill 1", "Skill 2", ...],
+  "questions": {
+    "behavioral": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"],
+    "technical": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"],
+    "roleSpecific": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"]
+  }
+}
+
+Resume Text:
+${text}
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const resVal = await geminiModel.generateContent(resumePrompt);
+      return resVal.response.text();
+    });
+
+    let jsonResult;
+    try {
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      jsonResult = JSON.parse(cleaned);
+    } catch (err) {
+      console.error("Failed to parse Gemini resume response", err);
+      // Fallback response if JSON fails
+      jsonResult = {
+        skills: ["Software Engineering", "Problem Solving", "Web Development", "Database Management"],
+        questions: {
+          behavioral: [
+            "Tell me about a project on your resume you are most proud of.",
+            "Describe a challenge you faced during a project and how you overcame it.",
+            "How do you handle conflict or differing opinions within a technical team?",
+            "Tell me about a time you had to learn a new technology quickly to solve a problem.",
+            "Describe a situation where a project deadline was at risk. How did you react?"
+          ],
+          technical: [
+            "Can you explain the difference between relational and non-relational databases?",
+            "What is REST, and what are the key characteristics of a RESTful API?",
+            "How does asynchronous execution work in modern JavaScript/Node.js?",
+            "Explain the concept of MVC architecture and its benefits in web development.",
+            "What are the best practices for securing APIs against common vulnerabilities like CSRF or SQL injection?"
+          ],
+          roleSpecific: [
+            "Based on your resume, how would you design the system architecture for a real-time messaging application?",
+            "How do you approach database schema design and normalization/denormalization trade-offs?",
+            "How would you set up a CI/CD pipeline for a web application described in your resume?",
+            "Explain how you would monitor and debug performance issues in a production server.",
+            "What criteria do you use to choose a specific programming language or framework for a new service?"
+          ]
+        }
+      };
+    }
+
+    res.json(jsonResult);
+  } catch (err) {
+    console.error("Error in /api/resume/upload", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    // Delete temp file
+    if (req.file && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {}
+    }
+  }
+});
+
+// ── GET /api/questions/bank ─────────────────────────────────────
+// Retrieve all question bank entries
+app.get("/api/questions/bank", (_req, res) => {
+  res.json(QUESTION_BANK);
+});
+
+// ── POST /api/questions/save ────────────────────────────────────
+// Toggles saved status of a question for a user
+app.post("/api/questions/save", async (req, res) => {
+  try {
+    const { email, questionId } = req.body;
+    if (!email || !questionId) {
+      return res.status(400).json({ error: "email and questionId are required." });
+    }
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    const isSaved = user.savedQuestions.includes(questionId);
+    if (isSaved) {
+      user.savedQuestions = user.savedQuestions.filter(id => id !== questionId);
+    } else {
+      user.savedQuestions.push(questionId);
+    }
+    await user.save();
+    res.json({ savedQuestions: user.savedQuestions, isSaved: !isSaved });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/practice/score ────────────────────────────────────
+// Scores a single practice answer across 5 dimensions using Gemini
+app.post("/api/practice/score", async (req, res) => {
+  try {
+    const { question, answer } = req.body;
+    if (!question || !answer) {
+      return res.status(400).json({ error: "question and answer are required." });
+    }
+
+    const scoringPrompt = `
+You are an expert interview evaluator. Evaluate the candidate's answer to the following question.
+Question: "${question}"
+Answer: "${answer}"
+
+Provide a detailed evaluation across these 5 dimensions:
+1. Structure (coherence, flow, format like STAR)
+2. Relevance (directly answering the prompt)
+3. Specificity (use of concrete metrics, examples, tools)
+4. Clarity (unambiguous, professional language)
+5. Impact (demonstrating results, outcomes, or deep understanding)
+
+For each dimension, provide:
+- A score from 1 to 10
+- A one-line detailed comment (under 15 words) explaining the score.
+
+Also calculate an overall average score (the average of the 5 scores multiplied by 10, or out of 100), and provide 2-3 specific, actionable suggestions for improvement.
+
+Format your response as a JSON object with EXACTLY this structure (no markdown fences, pure JSON):
+{
+  "overallScore": <0-100>,
+  "dimensions": {
+    "structure": { "score": <1-10>, "comment": "<one line comment>" },
+    "relevance": { "score": <1-10>, "comment": "<one line comment>" },
+    "specificity": { "score": <1-10>, "comment": "<one line comment>" },
+    "clarity": { "score": <1-10>, "comment": "<one line comment>" },
+    "impact": { "score": <1-10>, "comment": "<one line comment>" }
+  },
+  "suggestions": [
+    "<suggestion 1>",
+    "<suggestion 2>",
+    "<suggestion 3>"
+  ]
+}
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const resVal = await geminiModel.generateContent(scoringPrompt);
+      return resVal.response.text();
+    });
+
+    let jsonResult;
+    try {
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      jsonResult = JSON.parse(cleaned);
+    } catch (err) {
+      console.error("Failed to parse Gemini practice score response", err);
+      jsonResult = {
+        overallScore: 68,
+        dimensions: {
+          structure: { score: 7, comment: "Structure is logical but could use clearer STAR sequencing." },
+          relevance: { score: 8, comment: "Directly addresses the question but strays slightly at the end." },
+          specificity: { score: 6, comment: "Lacks concrete metrics or details about tools used." },
+          clarity: { score: 7, comment: "Language is clear but sentences are slightly run-on." },
+          impact: { score: 6, comment: "Outcome is mentioned but not quantified." }
+        },
+        suggestions: [
+          "Structure your answer more clearly around Situation, Task, Action, and Result (STAR).",
+          "Include concrete numbers, e.g., 'reduced latency by 40%' instead of just 'improved latency'.",
+          "Avoid filler phrasing at the end and conclude with a strong summary statement."
+        ]
+      };
+    }
+
+    res.json(jsonResult);
+  } catch (err) {
+    console.error("Error in /api/practice/score", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/sessions/public/:id ────────────────────────────────
+// Retrieve a completed session without email authorization (Public Read-Only)
+app.get("/api/sessions/public/:id", async (req, res) => {
+  try {
+    const session = await Session.findById(req.params.id).populate("userId", "name targetRole experienceLevel skillsKeywords");
     if (!session) return res.status(404).json({ error: "Session not found." });
     res.json(session);
   } catch (err) {

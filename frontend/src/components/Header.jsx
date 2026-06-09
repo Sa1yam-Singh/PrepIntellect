@@ -78,6 +78,26 @@ export default function Header({ currentView, setView, user, onLogout, openAuthM
           </button>
           {user && (
             <button
+              onClick={() => handleNavClick("resume")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:text-white hover:bg-white/5 ${
+                currentView === "resume" ? "text-indigo-400 bg-indigo-500/5" : "text-gray-400"
+              }`}
+            >
+              Resume
+            </button>
+          )}
+          {user && (
+            <button
+              onClick={() => handleNavClick("question-bank")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:text-white hover:bg-white/5 ${
+                currentView === "question-bank" ? "text-indigo-400 bg-indigo-500/5" : "text-gray-400"
+              }`}
+            >
+              Question Bank
+            </button>
+          )}
+          {user && (
+            <button
               onClick={() => handleNavClick("profile")}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:text-white hover:bg-white/5 flex items-center gap-1.5 ${
                 currentView === "profile" ? "text-purple-400 bg-purple-500/5" : "text-gray-400"
