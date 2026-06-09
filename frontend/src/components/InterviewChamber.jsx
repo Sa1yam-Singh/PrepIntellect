@@ -555,6 +555,8 @@ export default function InterviewChamber({ sessionId, onComplete }) {
     let lastGazeLogTime = 0;
     let lastAbsenceLogTime = 0;
     let lastMultiLogTime = 0;
+    let lastInferenceTime = 0;
+    const INFERENCE_INTERVAL = 333; // Run ML tracking ~3 times per second to save CPU
 
     const checkFrame = () => {
       const video = videoRef.current;
@@ -565,7 +567,7 @@ export default function InterviewChamber({ sessionId, onComplete }) {
         const now = Date.now();
         const timestamp = performance.now();
 
-        // 1. Calculate RMS volume level
+        // 1. Calculate RMS volume level (Check on every frame for immediate interruption response)
         let rms = 0;
         if (analyser) {
           const bufferLength = analyser.frequencyBinCount;
@@ -584,103 +586,118 @@ export default function InterviewChamber({ sessionId, onComplete }) {
           handleInterruption();
         }
 
-        // 2. Perform Computer Vision tracking checks
-        let result = null;
-        if (landmarker) {
-          try { result = landmarker.detectForVideo(video, timestamp); } catch {}
-        }
+        // 2. Perform Computer Vision & Object Detection (Throttled to save resources)
+        if (now - lastInferenceTime >= INFERENCE_INTERVAL) {
+          lastInferenceTime = now;
 
-        let noFace = false, multipleFaces = false, lookingAway = false;
+          // Perform Computer Vision tracking checks
+          let result = null;
+          if (landmarker) {
+            try { result = landmarker.detectForVideo(video, timestamp); } catch {}
+          }
 
-        if (result) {
-          const faces = result.faceLandmarks || [];
-          if (faces.length === 0) {
-            noFace = true;
-            if (now - lastAbsenceLogTime > 5000) {
-              lastAbsenceLogTime = now;
-              setInfractions(p => [...p, { infractionType: "CANDIDATE_ABSENT", timestamp: new Date().toISOString() }]);
-              pushLog("⚠ CANDIDATE_ABSENT — no face present in camera field.", "danger");
-            }
-          } else if (faces.length > 1) {
-            multipleFaces = true;
-            if (now - lastMultiLogTime > 5000) {
-              lastMultiLogTime = now;
-              setInfractions(p => [...p, { infractionType: "MULTIPLE_PEOPLE", timestamp: new Date().toISOString() }]);
-              pushLog(`⚠ MULTIPLE_PEOPLE — ${faces.length} faces visible.`, "danger");
-            }
-          } else {
-            const landmarks = faces[0];
-            const nose = landmarks[4], rightEye = landmarks[33], leftEye = landmarks[263];
-            if (nose && rightEye && leftEye) {
-              const distLeft = Math.sqrt(Math.pow(nose.x - leftEye.x, 2) + Math.pow(nose.y - leftEye.y, 2));
-              const distRight = Math.sqrt(Math.pow(nose.x - rightEye.x, 2) + Math.pow(nose.y - rightEye.y, 2));
-              const ratio = distLeft / (distRight || 0.001);
-              const avgEyesY = (leftEye.y + rightEye.y) / 2;
-              const verticalDelta = nose.y - avgEyesY;
-              const turnedSide = ratio < 0.45 || ratio > 2.2;
-              const turnedVertical = verticalDelta < 0.012 || verticalDelta > 0.095;
-              if (turnedSide || turnedVertical) {
-                lookingAway = true;
-                if (now - lastGazeLogTime > 5000) {
-                  lastGazeLogTime = now;
-                  setInfractions(p => [...p, { infractionType: "LOOK_AWAY", timestamp: new Date().toISOString() }]);
-                  pushLog(`⚠ LOOKING_AWAY — candidate eyes/head turned away from screen.`, "danger");
+          let currentNoFace = false;
+          let currentMultipleFaces = false;
+          let currentLookingAway = false;
+
+          if (result) {
+            const faces = result.faceLandmarks || [];
+            if (faces.length === 0) {
+              currentNoFace = true;
+              if (now - lastAbsenceLogTime > 5000) {
+                lastAbsenceLogTime = now;
+                setInfractions(p => [...p, { infractionType: "CANDIDATE_ABSENT", timestamp: new Date().toISOString() }]);
+                pushLog("⚠ CANDIDATE_ABSENT — no face present in camera field.", "danger");
+              }
+            } else if (faces.length > 1) {
+              currentMultipleFaces = true;
+              if (now - lastMultiLogTime > 5000) {
+                lastMultiLogTime = now;
+                setInfractions(p => [...p, { infractionType: "MULTIPLE_PEOPLE", timestamp: new Date().toISOString() }]);
+                pushLog(`⚠ MULTIPLE_PEOPLE — ${faces.length} faces visible.`, "danger");
+              }
+            } else {
+              const landmarks = faces[0];
+              const nose = landmarks[4], rightEye = landmarks[33], leftEye = landmarks[263];
+              if (nose && rightEye && leftEye) {
+                const distLeft = Math.sqrt(Math.pow(nose.x - leftEye.x, 2) + Math.pow(nose.y - leftEye.y, 2));
+                const distRight = Math.sqrt(Math.pow(nose.x - rightEye.x, 2) + Math.pow(nose.y - rightEye.y, 2));
+                const ratio = distLeft / (distRight || 0.001);
+                const avgEyesY = (leftEye.y + rightEye.y) / 2;
+                const verticalDelta = nose.y - avgEyesY;
+                const turnedSide = ratio < 0.45 || ratio > 2.2;
+                const turnedVertical = verticalDelta < 0.012 || verticalDelta > 0.095;
+                if (turnedSide || turnedVertical) {
+                  currentLookingAway = true;
+                  if (now - lastGazeLogTime > 5000) {
+                    lastGazeLogTime = now;
+                    setInfractions(p => [...p, { infractionType: "LOOK_AWAY", timestamp: new Date().toISOString() }]);
+                    pushLog(`⚠ LOOKING_AWAY — candidate eyes/head turned away from screen.`, "danger");
+                  }
                 }
               }
             }
           }
-        }
 
-        // 3. Perform Object Detection checks (Cell Phone, Laptop, etc.)
-        const detector = detectorRef.current;
-        let objectDetections = null;
-        if (detector) {
-          try { objectDetections = detector.detectForVideo(video, timestamp); } catch {}
-        }
+          // Perform Object Detection checks (Cell Phone, Laptop, etc.)
+          const detector = detectorRef.current;
+          let objectDetections = null;
+          if (detector) {
+            try { objectDetections = detector.detectForVideo(video, timestamp); } catch {}
+          }
 
-        let deviceDetected = false;
-        let detectedDeviceName = "";
+          let currentDeviceDetected = false;
+          let detectedDeviceName = "";
 
-        if (objectDetections && objectDetections.detections) {
-          for (const det of objectDetections.detections) {
-            const categories = det.categories || [];
-            for (const cat of categories) {
-              const label = cat.categoryName?.toLowerCase() || "";
-              if (label === "cell phone" || label === "phone" || label === "mobile phone" || label === "laptop") {
-                deviceDetected = true;
-                detectedDeviceName = cat.categoryName;
-                break;
+          if (objectDetections && objectDetections.detections) {
+            for (const det of objectDetections.detections) {
+              const categories = det.categories || [];
+              for (const cat of categories) {
+                const label = cat.categoryName?.toLowerCase() || "";
+                if (label === "cell phone" || label === "phone" || label === "mobile phone" || label === "laptop") {
+                  currentDeviceDetected = true;
+                  detectedDeviceName = cat.categoryName;
+                  break;
+                }
+              }
+              if (currentDeviceDetected) break;
+            }
+          }
+
+          if (currentDeviceDetected) {
+            if (now - lastDeviceWarningTimeRef.current > 15000) {
+              lastDeviceWarningTimeRef.current = now;
+              setInfractions(p => [...p, { infractionType: "DEVICE_DETECTED", timestamp: new Date().toISOString() }]);
+              pushLog(`⚠ DEVICE_DETECTED — electronic device (${detectedDeviceName}) visible on camera.`, "danger");
+
+              // Speak the warning out loud
+              try {
+                window.speechSynthesis.cancel();
+                const warningSpeech = new SpeechSynthesisUtterance("Please do not use any electronic devices to see answers during the interview.");
+                warningSpeech.rate = 1.0;
+                window.speechSynthesis.speak(warningSpeech);
+              } catch (e) {
+                console.error("Speech synthesis warning failed:", e);
               }
             }
-            if (deviceDetected) break;
           }
-        }
 
-        if (deviceDetected) {
-          if (now - lastDeviceWarningTimeRef.current > 15000) {
-            lastDeviceWarningTimeRef.current = now;
-            setInfractions(p => [...p, { infractionType: "DEVICE_DETECTED", timestamp: new Date().toISOString() }]);
-            pushLog(`⚠ DEVICE_DETECTED — electronic device (${detectedDeviceName}) visible on camera.`, "danger");
-
-            // Speak the warning out loud
-            try {
-              window.speechSynthesis.cancel();
-              const warningSpeech = new SpeechSynthesisUtterance("Please do not use any electronic devices to see answers during the interview.");
-              warningSpeech.rate = 1.0;
-              window.speechSynthesis.speak(warningSpeech);
-            } catch (e) {
-              console.error("Speech synthesis warning failed:", e);
+          setRealtimeAlerts(prev => ({ 
+            noFace: currentNoFace, 
+            multipleFaces: currentMultipleFaces, 
+            lookingAway: currentLookingAway, 
+            loudNoise: isLoud,
+            deviceDetected: currentDeviceDetected 
+          }));
+        } else {
+          // Update only volume-based alert on off-frames to keep VAD active in the UI
+          setRealtimeAlerts(prev => {
+            if (prev.loudNoise !== isLoud) {
+              return { ...prev, loudNoise: isLoud };
             }
-          }
+            return prev;
+          });
         }
-
-        setRealtimeAlerts({ 
-          noFace, 
-          multipleFaces, 
-          lookingAway, 
-          loudNoise: isLoud,
-          deviceDetected 
-        });
       }
 
       animationFrameId = requestAnimationFrame(checkFrame);
