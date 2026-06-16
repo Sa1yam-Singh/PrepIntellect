@@ -7,6 +7,8 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const multer = require("multer");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const OpenAI = require("openai");
 const fs = require("fs");
@@ -16,6 +18,37 @@ const mammoth = require("mammoth");
 
 const User = require("./models/User");
 const Session = require("./models/Session");
+const { sendStreakWarningEmail, sendWeeklyReportEmail } = require("./utils/emailService");
+
+// ── Utility: Award XP and Update Daily Streak ───────────────────
+async function awardXPAndStreak(user, amount) {
+  if (!user) return;
+  user.xp = (user.xp || 0) + amount;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (!user.lastActiveDate) {
+    user.streak = 1;
+  } else {
+    const lastActive = new Date(user.lastActiveDate);
+    lastActive.setHours(0, 0, 0, 0);
+
+    const diffTime = today.getTime() - lastActive.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) {
+      user.streak = (user.streak || 0) + 1;
+    } else if (diffDays > 1) {
+      user.streak = 1;
+    }
+    // If diffDays is 0 (same day), the streak remains active but does not increment twice
+  }
+
+  user.lastActiveDate = today;
+  await user.save();
+  return user;
+}
 
 // ── Configuration ───────────────────────────────────────────────
 const app = express();
@@ -137,6 +170,27 @@ app.use(cors({
     }
   }
 }));
+
+// Apply security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Handled on the frontend/hosting level
+}));
+
+// Rate limiting configuration
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // Limit each IP to 200 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many requests from this IP, please try again after 15 minutes."
+  }
+});
+
+// Apply rate limiting to all API endpoints
+app.use("/api/", apiLimiter);
+
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -573,6 +627,8 @@ app.get("/api/stats/:email", async (req, res) => {
         avgProblemSolvingScore: 0,
         lastSessionDate: null,
         currentStreak: 0,
+        xp: 0,
+        rank: 1,
       });
     }
 
@@ -582,6 +638,12 @@ app.get("/api/stats/:email", async (req, res) => {
 
     const totalSessions = sessions.length;
 
+    // Rank calculation: count users in the same category with more XP + 1
+    const rank = await User.countDocuments({
+      category: user.category,
+      xp: { $gt: user.xp || 0 }
+    }) + 1;
+
     if (totalSessions === 0) {
       return res.json({
         totalSessions: 0,
@@ -589,7 +651,9 @@ app.get("/api/stats/:email", async (req, res) => {
         avgCommunicationScore: 0,
         avgProblemSolvingScore: 0,
         lastSessionDate: null,
-        currentStreak: 0,
+        currentStreak: user.streak || 0,
+        xp: user.xp || 0,
+        rank: rank,
       });
     }
 
@@ -639,7 +703,9 @@ app.get("/api/stats/:email", async (req, res) => {
       avgCommunicationScore,
       avgProblemSolvingScore,
       lastSessionDate,
-      currentStreak,
+      currentStreak: user.streak || currentStreak || 0,
+      xp: user.xp || 0,
+      rank: rank,
     });
   } catch (err) {
     console.error("[/api/stats]", err);
@@ -792,6 +858,10 @@ app.post("/api/interview/next", upload.single("audio"), async (req, res) => {
       session.status = "completed";
       await session.save();
 
+      if (user) {
+        await awardXPAndStreak(user, 100);
+      }
+
       return res.json({
         complete: true,
         questionIndex: answeredCount - 1,
@@ -924,6 +994,10 @@ app.post("/api/interview/live-complete", async (req, res) => {
     session.status = "completed";
     await session.save();
 
+    if (user) {
+      await awardXPAndStreak(user, 100);
+    }
+
     res.json({
       success: true,
       evaluation,
@@ -998,8 +1072,9 @@ app.post("/api/resume/upload", upload.single("resume"), async (req, res) => {
     }
 
     // Call Gemini API to extract skills and generate questions
+    const systemPrompt = "You are an expert technical interviewer and resume parser.";
     const resumePrompt = `
-You are an expert technical interviewer. Parse the following resume text.
+Parse the following resume text.
 1. Extract a list of up to 10 key technical and soft skills/keywords found in the resume.
 2. Generate exactly 15 personalized interview questions tailored to their background, divided into:
    - 5 Behavioral questions (STAR format related to projects or experience on their resume)
@@ -1021,7 +1096,7 @@ ${text}
 `;
 
     const result = await retryWithBackoff(async () => {
-      const resVal = await geminiModel.generateContent(resumePrompt);
+      const resVal = await geminiModel.generateContent(`${systemPrompt}\n${resumePrompt}`);
       return resVal.response.text();
     });
 
@@ -1030,7 +1105,7 @@ ${text}
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       jsonResult = JSON.parse(cleaned);
     } catch (err) {
-      console.error("Failed to parse Gemini resume response", err);
+      console.error("Failed to parse Gemini resume response, fallback to mock data", err);
       // Fallback response if JSON fails
       jsonResult = {
         skills: ["Software Engineering", "Problem Solving", "Web Development", "Database Management"],
@@ -1108,13 +1183,14 @@ app.post("/api/questions/save", async (req, res) => {
 // Scores a single practice answer across 5 dimensions using Gemini
 app.post("/api/practice/score", async (req, res) => {
   try {
-    const { question, answer } = req.body;
+    const { question, answer, email } = req.body;
     if (!question || !answer) {
       return res.status(400).json({ error: "question and answer are required." });
     }
 
+    const systemPrompt = "You are an expert interview evaluator specializing in communications, behavioral answers, and technical correctness.";
     const scoringPrompt = `
-You are an expert interview evaluator. Evaluate the candidate's answer to the following question.
+Evaluate the candidate's answer to the following question.
 Question: "${question}"
 Answer: "${answer}"
 
@@ -1150,7 +1226,7 @@ Format your response as a JSON object with EXACTLY this structure (no markdown f
 `;
 
     const result = await retryWithBackoff(async () => {
-      const resVal = await geminiModel.generateContent(scoringPrompt);
+      const resVal = await geminiModel.generateContent(`${systemPrompt}\n${scoringPrompt}`);
       return resVal.response.text();
     });
 
@@ -1159,7 +1235,7 @@ Format your response as a JSON object with EXACTLY this structure (no markdown f
       const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       jsonResult = JSON.parse(cleaned);
     } catch (err) {
-      console.error("Failed to parse Gemini practice score response", err);
+      console.error("Failed to parse Gemini practice score response, fallback to mock data", err);
       jsonResult = {
         overallScore: 68,
         dimensions: {
@@ -1177,9 +1253,206 @@ Format your response as a JSON object with EXACTLY this structure (no markdown f
       };
     }
 
-    res.json(jsonResult);
+    let xpAwarded = 0;
+    if (email) {
+      const user = await User.findOne({ email });
+      if (user) {
+        await awardXPAndStreak(user, 30);
+        xpAwarded = 30;
+      }
+    }
+
+    res.json({ ...jsonResult, xpAwarded });
   } catch (err) {
     console.error("Error in /api/practice/score", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/practice/hint ─────────────────────────────────────
+// Generates a conceptual hint for a practice question using Gemini
+app.post("/api/practice/hint", async (req, res) => {
+  try {
+    const { question, code, language } = req.body;
+    if (!question) {
+      return res.status(400).json({ error: "question is required." });
+    }
+
+    const systemPrompt = "You are an expert coding interview coach.";
+    const hintPrompt = `
+The candidate is practicing a technical coding question.
+Question: "${question}"
+${code ? `Their current code in ${language || "plain text"}:\n\`\`\`\n${code}\n\`\`\`` : "They haven't written any code yet."}
+
+Provide a helpful, progressive conceptual hint to guide them toward the optimal solution.
+- Focus on the high-level logic, algorithmic strategy (e.g. dynamic programming, sliding window), or data structures.
+- Do NOT write or provide complete code solutions.
+- Keep the hint brief (under 3 sentences) and highly actionable.
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const resVal = await geminiModel.generateContent(`${systemPrompt}\n${hintPrompt}`);
+      return resVal.response.text();
+    });
+
+    res.json({ hint: result.trim() });
+  } catch (err) {
+    console.error("Error in /api/practice/hint", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/practice/score-code ───────────────────────────────
+// Scores a coding solution across correctness, complexity and style
+app.post("/api/practice/score-code", async (req, res) => {
+  try {
+    const { question, code, language, email } = req.body;
+    if (!question || !code) {
+      return res.status(400).json({ error: "question and code are required." });
+    }
+
+    const systemPrompt = "You are an expert technical interviewer specializing in SDE coding rounds.";
+    const codingPrompt = `
+Evaluate the candidate's code solution to the following question.
+Question: "${question}"
+Programming Language: ${language || "JavaScript"}
+Code:
+\`\`\`${language || "javascript"}
+${code}
+\`\`\`
+
+Evaluate the code on these dimensions:
+1. Correctness (logic, edge cases, standard constraints)
+2. Time Complexity (does it meet optimal scaling?)
+3. Space Complexity (is the memory footprint minimized?)
+4. Readability (variable naming, modularity, comments)
+5. Optimal Approach (how close to the best known algorithm?)
+
+Provide a detailed time complexity (e.g. O(N), O(log N)) and space complexity.
+Also calculate an overall average score (out of 100), and provide 2-3 specific, actionable suggestions.
+
+Format your response as a JSON object with EXACTLY this structure (no markdown fences, pure JSON):
+{
+  "overallScore": <0-100>,
+  "complexityAnalysis": {
+    "time": "<e.g., O(N) or O(N log N)>",
+    "space": "<e.g., O(1) or O(N)>",
+    "explanation": "<brief 1-2 sentence explanation of time/space complexity>"
+  },
+  "dimensions": {
+    "correctness": { "score": <1-10>, "comment": "<one line comment>" },
+    "timeComplexity": { "score": <1-10>, "comment": "<one line comment>" },
+    "spaceComplexity": { "score": <1-10>, "comment": "<one line comment>" },
+    "readability": { "score": <1-10>, "comment": "<one line comment>" },
+    "optimalApproach": { "score": <1-10>, "comment": "<one line comment>" }
+  },
+  "suggestions": [
+    "<suggestion 1>",
+    "<suggestion 2>",
+    "<suggestion 3>"
+  ]
+}
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const resVal = await geminiModel.generateContent(`${systemPrompt}\n${codingPrompt}`);
+      return resVal.response.text();
+    });
+
+    let jsonResult;
+    try {
+      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      jsonResult = JSON.parse(cleaned);
+    } catch (err) {
+      console.error("Failed to parse Gemini code score response, fallback to mock data", err);
+      jsonResult = {
+        overallScore: 78,
+        complexityAnalysis: {
+          time: "O(N log N)",
+          space: "O(N)",
+          explanation: "Sorting the array takes O(N log N) time. The auxiliary storage holds a copy of unique elements."
+        },
+        dimensions: {
+          correctness: { score: 8, comment: "Solution passes standard test cases but lacks boundary checks." },
+          timeComplexity: { score: 7, comment: "Sorting is correct but can be optimized to linear time." },
+          spaceComplexity: { score: 8, comment: "Memory footprint is reasonable but auxiliary array can be skipped." },
+          readability: { score: 9, comment: "Excellent variable naming and modular block layout." },
+          optimalApproach: { score: 7, comment: "A hash map approach could yield O(N) time complexity." }
+        },
+        suggestions: [
+          "Check for empty array input boundary conditions.",
+          "Try utilizing a Hash Map to avoid sorting overhead and reduce complexity to O(N).",
+          "Ensure variable types are handled correctly for large integer inputs."
+        ]
+      };
+    }
+
+    let xpAwarded = 0;
+    if (email) {
+      const user = await User.findOne({ email });
+      if (user) {
+        await awardXPAndStreak(user, 30);
+        xpAwarded = 30;
+      }
+    }
+
+    res.json({ ...jsonResult, xpAwarded });
+  } catch (err) {
+    console.error("Error in /api/practice/score-code", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/leaderboard ─────────────────────────────────────────
+// Fetch top users sorted by XP (overall or by category)
+app.get("/api/leaderboard", async (req, res) => {
+  try {
+    const { category } = req.query;
+    const filter = category && category !== "All" ? { category } : {};
+    
+    const leaders = await User.find(filter)
+      .sort({ xp: -1 })
+      .limit(10)
+      .select("name email xp streak category targetRole")
+      .lean();
+      
+    res.json(leaders);
+  } catch (err) {
+    console.error("Error in /api/leaderboard", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/admin/trigger-emails ──────────────────────────────
+// Manually triggers a mock retention email for testing
+app.post("/api/admin/trigger-emails", async (req, res) => {
+  try {
+    const { email, type } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "email is required." });
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (type === "streak") {
+      const emailRes = await sendStreakWarningEmail(user);
+      return res.json({ success: true, message: "Streak warning email triggered.", details: emailRes });
+    } else if (type === "weekly") {
+      const sessions = await Session.find({ userId: user._id, status: "completed" }).lean();
+      const stats = {
+        avgTechnicalScore: 78,
+        avgCommunicationScore: 82,
+        avgProblemSolvingScore: 80,
+      };
+      const emailRes = await sendWeeklyReportEmail(user, stats, sessions);
+      return res.json({ success: true, message: "Weekly report email triggered.", details: emailRes });
+    } else {
+      return res.status(400).json({ error: "Invalid type. Use 'streak' or 'weekly'." });
+    }
+  } catch (err) {
+    console.error("Error in /api/admin/trigger-emails", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1335,6 +1608,28 @@ server.on("upgrade", (request, socket, head) => {
   }
 });
 
+async function seedLeaderboard() {
+  try {
+    const count = await User.countDocuments();
+    if (count <= 1) {
+      console.log("🌱 Seeding mock users for leaderboard...");
+      const mockUsers = [
+        { name: "Siddharth Verma", email: "siddharth@example.com", xp: 1250, streak: 8, category: "Engineering", targetRole: "Senior Backend Engineer", onboarding_complete: true },
+        { name: "Priya Sharma", email: "priya@example.com", xp: 950, streak: 5, category: "Engineering", targetRole: "Full Stack Engineer", onboarding_complete: true },
+        { name: "Arjun Mehta", email: "arjun@example.com", xp: 820, streak: 4, category: "Engineering", targetRole: "Frontend Developer", onboarding_complete: true },
+        { name: "Dr. Ananya Roy", email: "ananya@example.com", xp: 1100, streak: 6, category: "Medical", targetRole: "Resident Cardiologist", onboarding_complete: true },
+        { name: "Dr. Kabir Malhotra", email: "kabir@example.com", xp: 750, streak: 3, category: "Medical", targetRole: "General Surgeon", onboarding_complete: true },
+        { name: "Vikram Rathore", email: "vikram@example.com", xp: 1050, streak: 7, category: "Defense", targetRole: "SSB Cadet Officer", onboarding_complete: true },
+        { name: "Rohan Singhal", email: "rohan@example.com", xp: 620, streak: 2, category: "Aviation", targetRole: "Trainee Cabin Crew", onboarding_complete: true },
+      ];
+      await User.insertMany(mockUsers);
+      console.log("✅ Leaderboard seeding complete.");
+    }
+  } catch (err) {
+    console.warn("⚠️ Mock seeding failed:", err.message);
+  }
+}
+
 async function startServer() {
   let uri = MONGODB_URI;
 
@@ -1346,6 +1641,7 @@ async function startServer() {
         connectTimeoutMS: 5000,
       });
       console.log("✅ MongoDB connected (Atlas / remote)");
+      await seedLeaderboard();
     } catch (err) {
       console.warn("⚠️  Remote MongoDB failed:", err.message);
       console.log("🔄 Falling back to in-memory MongoDB…");
@@ -1361,6 +1657,7 @@ async function startServer() {
     await mongoose.connect(uri);
     console.log("✅ MongoDB connected (in-memory) —", uri);
     console.log("   ⚠️  Data will NOT persist across restarts.");
+    await seedLeaderboard();
   }
 
   // Use http server listening instead of app.listen
