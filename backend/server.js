@@ -1096,8 +1096,16 @@ ${text}
 `;
 
     const result = await retryWithBackoff(async () => {
-      const resVal = await geminiModel.generateContent(`${systemPrompt}\n${resumePrompt}`);
-      return resVal.response.text();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: resumePrompt }
+        ],
+        temperature: 0.4,
+        response_format: { type: "json_object" }
+      });
+      return completion.choices[0].message.content;
     });
 
     let jsonResult;
