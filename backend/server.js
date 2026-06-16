@@ -237,7 +237,7 @@ function buildEvaluationPrompt(user, chatHistory) {
   const isEmptyAnswer = (ans) => !ans || ans.trim() === "" || EMPTY_MARKERS.includes(ans.trim()) || ans.trim().length < 15;
 
   const answeredCount = chatHistory.filter((e) => !isEmptyAnswer(e.transcribedAnswer)).length;
-  const totalQuestions = chatHistory.length;
+  const totalQuestions = Math.max(chatHistory.length, 15);
   const unansweredCount = totalQuestions - answeredCount;
   const answerRate = totalQuestions > 0 ? answeredCount / totalQuestions : 0;
   // Hard mathematical ceiling: can't score above your answer rate
@@ -506,7 +506,7 @@ function generateMockEvaluation(chatHistory) {
   const isEmptyAnswer = (ans) => !ans || ans.trim() === "" || EMPTY_MARKERS.includes(ans.trim()) || ans.trim().length < 15;
 
   const answeredCount = chatHistory.filter((q) => !isEmptyAnswer(q.transcribedAnswer)).length;
-  const totalQuestions = chatHistory.length;
+  const totalQuestions = Math.max(chatHistory.length, 15);
   const unansweredCount = totalQuestions - answeredCount;
   const answerRate = totalQuestions > 0 ? answeredCount / totalQuestions : 0;
   // Hard ceiling — cannot score above your answer completion rate
@@ -569,6 +569,68 @@ function generateMockEvaluation(chatHistory) {
     }),
     improvementTips,
   };
+}
+
+// ── Utility: Enforce strict limits and formatting on evaluations ──
+function enforceStrictEvaluation(evaluation, chatHistory) {
+  if (!evaluation) return generateMockEvaluation(chatHistory);
+
+  const EMPTY_MARKERS = ["(no answer)", "(no answer provided)", "(no audio submitted)", "(transcription failed)"];
+  const isEmptyAnswer = (ans) => !ans || ans.trim() === "" || EMPTY_MARKERS.includes(ans.trim()) || ans.trim().length < 15;
+
+  const answeredCount = chatHistory.filter((q) => !isEmptyAnswer(q.transcribedAnswer)).length;
+  const totalQuestions = Math.max(chatHistory.length, 15);
+  const unansweredCount = totalQuestions - answeredCount;
+  const answerRate = totalQuestions > 0 ? answeredCount / totalQuestions : 0;
+  
+  // Hard ceiling logic
+  const maxScore = Math.max(5, Math.round(answerRate * 100));
+
+  // Enforce scores ceiling
+  evaluation.technicalScore = Math.min(Number(evaluation.technicalScore) || 0, maxScore);
+  evaluation.communicationScore = Math.min(Number(evaluation.communicationScore) || 0, maxScore);
+  evaluation.problemSolvingScore = Math.min(Number(evaluation.problemSolvingScore) || 0, maxScore);
+
+  // Format arrays if they don't exist
+  if (!Array.isArray(evaluation.strengths)) evaluation.strengths = [];
+  if (!Array.isArray(evaluation.weaknesses)) evaluation.weaknesses = [];
+  if (!Array.isArray(evaluation.improvementTips)) evaluation.improvementTips = [];
+  if (!Array.isArray(evaluation.grammarIssues)) evaluation.grammarIssues = [];
+  if (!Array.isArray(evaluation.perQuestionFeedback)) evaluation.perQuestionFeedback = [];
+
+  // Enforce realistic strengths and weaknesses based on answered questions
+  if (answeredCount === 0) {
+    evaluation.strengths = ["Attended the interview session"];
+    evaluation.weaknesses = [
+      `CRITICAL: All ${totalQuestions} questions were completely skipped or unanswered.`,
+      "No technical knowledge or communication skills were demonstrated."
+    ];
+    evaluation.improvementTips = [
+      "You must actively speak and answer the questions to receive an evaluation score.",
+      "Ensure your microphone is connected and check the guardrail logs for detection errors."
+    ];
+  } else if (unansweredCount > 0) {
+    // Inject critical warning if there are unanswered questions
+    const warningMsg = `CRITICAL: ${unansweredCount} out of ${totalQuestions} questions were completely unanswered — this is the primary reason for the low score.`;
+    if (!evaluation.weaknesses.some(w => w.includes("unanswered") || w.includes("completely skipped"))) {
+      evaluation.weaknesses.unshift(warningMsg);
+    }
+  }
+
+  // Ensure feedback lists missed questions
+  const skippedTopics = chatHistory
+    .map((q, i) => ({ i, q }))
+    .filter(({ q }) => isEmptyAnswer(q.transcribedAnswer))
+    .map(({ q, i }) => `Q${i + 1} (${q.question.slice(0, 55).trim()}...)`);
+
+  if (skippedTopics.length > 0) {
+    const skippedWarning = `Topics skipped without any answer: ${skippedTopics.slice(0, 3).join("; ")}`;
+    if (!evaluation.weaknesses.some(w => w.includes("Topics skipped"))) {
+      evaluation.weaknesses.push(skippedWarning);
+    }
+  }
+
+  return evaluation;
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -908,6 +970,7 @@ app.post("/api/interview/next", upload.single("audio"), async (req, res) => {
         evaluation = generateMockEvaluation(session.chatHistory);
       }
 
+      evaluation = enforceStrictEvaluation(evaluation, session.chatHistory);
       session.finalEvaluation = evaluation;
       session.status = "completed";
       await session.save();
@@ -1044,6 +1107,7 @@ app.post("/api/interview/live-complete", async (req, res) => {
       }
     }
 
+    evaluation = enforceStrictEvaluation(evaluation, chatHistory);
     session.finalEvaluation = evaluation;
     session.status = "completed";
     await session.save();
