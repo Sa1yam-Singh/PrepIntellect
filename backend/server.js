@@ -231,51 +231,77 @@ function buildSystemPrompt(user) {
   ].join("\n");
 }
 
-// ── Utility: Build Evaluation Prompt (Enhanced) ─────────────────
+// ── Utility: Build Evaluation Prompt (Strict Accuracy) ──────────
 function buildEvaluationPrompt(user, chatHistory) {
+  const EMPTY_MARKERS = ["(no answer)", "(no answer provided)", "(no audio submitted)", "(transcription failed)"];
+  const isEmptyAnswer = (ans) => !ans || ans.trim() === "" || EMPTY_MARKERS.includes(ans.trim()) || ans.trim().length < 15;
+
+  const answeredCount = chatHistory.filter((e) => !isEmptyAnswer(e.transcribedAnswer)).length;
+  const totalQuestions = chatHistory.length;
+  const unansweredCount = totalQuestions - answeredCount;
+  const answerRate = totalQuestions > 0 ? answeredCount / totalQuestions : 0;
+  // Hard mathematical ceiling: can't score above your answer rate
+  const maxPossibleScore = Math.max(5, Math.round(answerRate * 100));
+
   const transcript = chatHistory
-    .map(
-      (entry, i) =>
-        `Q${i + 1}: ${entry.question}\nA${i + 1}: ${entry.transcribedAnswer || "(no answer)"}`
-    )
+    .map((entry, i) => {
+      const isEmpty = isEmptyAnswer(entry.transcribedAnswer);
+      return `Q${i + 1}: ${entry.question}\nA${i + 1}: ${isEmpty ? "⚠️ NO ANSWER PROVIDED — candidate was silent or skipped this question" : entry.transcribedAnswer}`;
+    })
     .join("\n\n");
 
   return [
-    `You are an expert technical interview evaluator. Be thorough, specific, and constructive.`,
-    `You are evaluating a mock technical interview for the role of "${user.targetRole}" (${user.experienceLevel}).`,
+    `You are a STRICT and HONEST technical interview evaluator. Your job is to give ACCURATE scores — never inflate them.`,
+    `You are evaluating a mock interview for the role of "${user.targetRole}" (${user.experienceLevel}).`,
     `Skills tested: ${user.skillsKeywords.join(", ") || "general"}.`,
+    ``,
+    `━━━ CRITICAL STATISTICS ━━━`,
+    `• Total questions: ${totalQuestions}`,
+    `• Questions answered: ${answeredCount}`,
+    `• Questions SKIPPED / SILENT / EMPTY: ${unansweredCount}`,
+    `• Answer rate: ${Math.round(answerRate * 100)}%`,
+    `• MAXIMUM possible score (any category): ${maxPossibleScore}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ``,
+    `⛔ HARD RULE: No score in ANY category may exceed ${maxPossibleScore}. This is mathematically enforced because only ${answeredCount}/${totalQuestions} questions were answered. Exceeding this ceiling is FORBIDDEN.`,
     ``,
     `Here is the full interview transcript:`,
     `---`,
     transcript,
     `---`,
     ``,
-    `Evaluate the candidate carefully on these criteria:`,
-    `1. **Technical Knowledge** (0-100): Accuracy, depth, and correctness of technical concepts. Did they demonstrate understanding of fundamentals and advanced topics?`,
-    `2. **Communication** (0-100): Clarity of explanation, structured thinking, use of examples. Were they articulate and easy to follow?`,
-    `3. **Problem Solving** (0-100): Analytical approach, breaking down problems, considering edge cases, proposing solutions methodically.`,
+    `SCORING SCALE — apply strictly:`,
+    `  0-15  → Candidate barely participated (fewer than 2 real answers)`,
+    `  16-35 → Very poor. Major gaps. Most questions unanswered or wrong.`,
+    `  36-50 → Poor. Some engagement but significant knowledge gaps.`,
+    `  51-65 → Below average. Partial answers, lacks depth or examples.`,
+    `  66-75 → Average. Adequate answers but misses advanced concepts.`,
+    `  76-88 → Good. Strong answers with good depth and structure.`,
+    `  89-100 → Excellent. Near-perfect — only for exceptional candidates who answered nearly all questions with depth.`,
     ``,
-    `For each question, provide a 1-sentence feedback on the candidate's answer quality.`,
+    `Evaluate on these 3 criteria (strictly respect the scale and ceiling of ${maxPossibleScore}):`,
+    `1. Technical Knowledge (0-${maxPossibleScore}): Accuracy/depth of technical content. Each unanswered question = 0 contribution.`,
+    `2. Communication (0-${maxPossibleScore}): Clarity, structure, use of examples. Silent candidate cannot score above ${maxPossibleScore}.`,
+    `3. Problem Solving (0-${maxPossibleScore}): Analytical approach, edge cases, methodical thinking.`,
     ``,
-    `Produce a JSON evaluation with EXACTLY this structure (no markdown fences, pure JSON):`,
+    `Produce a JSON evaluation — no markdown fences, pure JSON:`,
     `{`,
-    `  "technicalScore": <0-100>,`,
-    `  "communicationScore": <0-100>,`,
-    `  "problemSolvingScore": <0-100>,`,
-    `  "strengths": ["<specific strength 1>", "<specific strength 2>", "<specific strength 3>"],`,
-    `  "weaknesses": ["<specific weakness 1>", "<specific weakness 2>"],`,
-    `  "grammarIssues": ["<specific grammar/language issue 1>", ...],`,
-    `  "perQuestionFeedback": ["<feedback for Q1>", "<feedback for Q2>", "<feedback for Q3>", "<feedback for Q4>"],`,
-    `  "improvementTips": ["<actionable tip 1>", "<actionable tip 2>", "<actionable tip 3>"]`,
+    `  "technicalScore": <integer 0-${maxPossibleScore}>,`,
+    `  "communicationScore": <integer 0-${maxPossibleScore}>,`,
+    `  "problemSolvingScore": <integer 0-${maxPossibleScore}>,`,
+    `  "strengths": [<only list strengths with DIRECT EVIDENCE from the transcript — if candidate barely answered, strengths array may have only 1 item or be empty>],`,
+    `  "weaknesses": ["<weakness 1 — name the specific question number and topic missed>", "<weakness 2>", "<weakness 3 — if ${unansweredCount} questions were skipped, this MUST be listed as a critical weakness>"],`,
+    `  "grammarIssues": ["<grammar issue 1 if any>"],`,
+    `  "perQuestionFeedback": [<one string per question — for unanswered questions write: "No answer provided — this question on [topic] was completely skipped">],`,
+    `  "improvementTips": ["<tip 1 — must reference a SPECIFIC topic or question that was missed, e.g. 'Study hash map internals which was missed in Q6'>", "<tip 2>", "<tip 3>"]`,
     `}`,
     ``,
-    `Rules for evaluation:`,
-    `- Be specific. Reference actual content from the candidate's answers.`,
-    `- Do NOT give generic feedback like "could improve". State exactly what was missing or wrong.`,
-    `- If the candidate didn't answer a question, score it low and note it clearly.`,
-    `- Strengths and weaknesses should reference specific answers, not be generic platitudes.`,
-    `- Improvement tips should be actionable steps the candidate can practice.`,
-    `- If grammar was fine, return an empty array for grammarIssues.`,
+    `ENFORCEMENT:`,
+    `- Scores ABOVE ${maxPossibleScore} are INVALID. Do not produce them.`,
+    `- Do NOT fabricate strengths. Only write what the candidate actually demonstrated.`,
+    `- Weaknesses MUST name specific topics/questions — not generic statements.`,
+    `- Improvement tips must map to specific gaps in THIS interview, not generic advice.`,
+    `- If ${unansweredCount} questions were skipped, the word "critical" must appear in weaknesses.`,
   ].join("\n");
 }
 
@@ -474,46 +500,74 @@ async function generateReaction(systemPrompt, question, answer) {
   }
 }
 
-// ── Utility: Generate Mock Evaluation ───────────────────────────
+// ── Utility: Generate Mock Evaluation (Strict Accuracy) ─────────
 function generateMockEvaluation(chatHistory) {
-  // Generate somewhat realistic scores based on answer content
-  const answeredCount = chatHistory.filter((q) => q.transcribedAnswer && q.transcribedAnswer !== "(no answer)" && q.transcribedAnswer !== "(no audio submitted)" && q.transcribedAnswer !== "(transcription failed)").length;
+  const EMPTY_MARKERS = ["(no answer)", "(no answer provided)", "(no audio submitted)", "(transcription failed)"];
+  const isEmptyAnswer = (ans) => !ans || ans.trim() === "" || EMPTY_MARKERS.includes(ans.trim()) || ans.trim().length < 15;
+
+  const answeredCount = chatHistory.filter((q) => !isEmptyAnswer(q.transcribedAnswer)).length;
   const totalQuestions = chatHistory.length;
+  const unansweredCount = totalQuestions - answeredCount;
   const answerRate = totalQuestions > 0 ? answeredCount / totalQuestions : 0;
+  // Hard ceiling — cannot score above your answer completion rate
+  const maxScore = Math.max(5, Math.round(answerRate * 100));
 
-  const avgLength = chatHistory.reduce((sum, q) => sum + (q.transcribedAnswer?.length || 0), 0) / Math.max(totalQuestions, 1);
-  const depthBonus = Math.min(avgLength / 5, 20); // longer answers get a bonus up to 20pts
+  const avgLength = chatHistory
+    .filter((q) => !isEmptyAnswer(q.transcribedAnswer))
+    .reduce((sum, q) => sum + (q.transcribedAnswer?.length || 0), 0) / Math.max(answeredCount, 1);
+  const depthBonus = Math.min(avgLength / 20, 8); // max 8pts bonus for long answers
 
-  const technicalScore = Math.round(Math.min(40 + answerRate * 35 + depthBonus + Math.random() * 10, 100));
-  const communicationScore = Math.round(Math.min(45 + answerRate * 30 + depthBonus * 0.8 + Math.random() * 10, 100));
-  const problemSolvingScore = Math.round(Math.min(38 + answerRate * 32 + depthBonus * 0.9 + Math.random() * 12, 100));
+  // Strict scoring — starts at 0, scales directly with answer rate
+  const technicalScore    = Math.round(Math.min(answerRate * 80 + depthBonus + Math.random() * 5, maxScore));
+  const communicationScore = Math.round(Math.min(answerRate * 75 + depthBonus * 0.8 + Math.random() * 5, maxScore));
+  const problemSolvingScore = Math.round(Math.min(answerRate * 78 + depthBonus * 0.9 + Math.random() * 5, maxScore));
+
+  // Identify which specific questions were skipped
+  const skippedTopics = chatHistory
+    .map((q, i) => ({ i, q }))
+    .filter(({ q }) => isEmptyAnswer(q.transcribedAnswer))
+    .map(({ q, i }) => `Q${i + 1} (${q.question.slice(0, 55).trim()}...)`);
+
+  const strengths = answeredCount === 0
+    ? ["Attended the interview session"]
+    : [
+        `Answered ${answeredCount} out of ${totalQuestions} questions`,
+        avgLength > 200 ? "Provided detailed responses for the questions that were attempted" : "Kept responses focused for the questions attempted",
+      ];
+
+  const weaknesses = [
+    unansweredCount > 0
+      ? `CRITICAL: ${unansweredCount} out of ${totalQuestions} questions were completely unanswered — this is the primary reason for the low score`
+      : "Could elaborate more with real-world examples and edge cases",
+    skippedTopics.length > 0
+      ? `Topics skipped without any answer: ${skippedTopics.slice(0, 3).join("; ")}`
+      : "Practice breaking down complex problems step-by-step before answering",
+    "Prepare structured answers using the STAR method (Situation, Task, Action, Result) for behavioral questions",
+  ];
+
+  const improvementTips = [
+    skippedTopics.length > 0
+      ? `Study and prepare answers for these skipped topics: ${skippedTopics.slice(0, 2).map((t) => t.replace(/Q\d+ \((.+)\.\.\.$/, "$1")).join(", ")}`
+      : "Practice explaining technical concepts out loud to build verbal fluency",
+    "Use the STAR method (Situation, Task, Action, Result) for behavioral questions to give structured answers",
+    "For technical questions, always start by stating your approach before diving into details",
+  ];
 
   return {
     technicalScore,
     communicationScore,
     problemSolvingScore,
-    strengths: [
-      answeredCount > 0 ? "Attempted to answer questions with relevant context" : "Showed up and engaged with the interview process",
-      "Demonstrated willingness to tackle technical problems",
-      avgLength > 100 ? "Provided detailed, thorough responses" : "Kept answers concise and focused",
-    ],
-    weaknesses: [
-      answeredCount < totalQuestions ? `Did not answer ${totalQuestions - answeredCount} of ${totalQuestions} questions` : "Could elaborate more on edge cases",
-      "Consider providing more real-world examples from past experience",
-      "Practice structuring answers using the STAR method for behavioral questions",
-    ],
+    strengths,
+    weaknesses,
     grammarIssues: [],
     perQuestionFeedback: chatHistory.map((q, i) => {
-      if (!q.transcribedAnswer || q.transcribedAnswer === "(no answer)") {
-        return `Q${i + 1}: No answer provided.`;
+      if (isEmptyAnswer(q.transcribedAnswer)) {
+        return `Q${i + 1}: ⚠️ No answer was provided — this question on "${q.question.slice(0, 60).trim()}" was completely skipped, contributing 0 to the score.`;
       }
-      return `Q${i + 1}: Answer was ${q.transcribedAnswer.length > 100 ? "detailed" : "brief"} — ${q.transcribedAnswer.length > 100 ? "good depth shown" : "consider elaborating more"}.`;
+      const len = q.transcribedAnswer.length;
+      return `Q${i + 1}: Answer was ${len > 200 ? "detailed and thorough" : len > 80 ? "adequate but brief" : "very short"} — ${len > 200 ? "good depth shown" : "consider elaborating with specific examples and technical detail"}.`;
     }),
-    improvementTips: [
-      "Practice explaining concepts out loud to build verbal fluency",
-      "Study common data structure time/space complexity trade-offs",
-      "Prepare 2-3 real project examples you can reference during interviews",
-    ],
+    improvementTips,
   };
 }
 
