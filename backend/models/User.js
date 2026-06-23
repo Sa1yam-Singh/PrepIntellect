@@ -76,6 +76,27 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    flashcards: {
+      type: [
+        new mongoose.Schema({
+          question: String,
+          answer: String,
+          category: String,
+          reviewCount: { type: Number, default: 0 },
+        }, { _id: false })
+      ],
+      default: [],
+    },
+    availability: {
+      type: [
+        new mongoose.Schema({
+          dayOfWeek: String,
+          startTime: String,
+          endTime: String,
+        }, { _id: false })
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );

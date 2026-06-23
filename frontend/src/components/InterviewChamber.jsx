@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import axios from "axios";
 import { FilesetResolver, FaceLandmarker, ObjectDetector } from "@mediapipe/tasks-vision";
 import { FiVolume2, FiVolumeX, FiCpu, FiPhoneOff, FiMic, FiMicOff } from "react-icons/fi";
 import PermissionModal from "./PermissionModal";
+import WaveformVisualizer from "./WaveformVisualizer";
+import { analyzeSpeechText } from "../utils/SpeechAnalyzer";
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL 
@@ -69,6 +71,21 @@ export default function InterviewChamber({ sessionId, onComplete }) {
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
   useEffect(() => { aiSpeakingRef.current = aiSpeaking; }, [aiSpeaking]);
   useEffect(() => { interimCandidateSpeechRef.current = interimCandidateSpeech; }, [interimCandidateSpeech]);
+
+  // Compute live speech pacing and filler stats
+  const speechStats = useMemo(() => {
+    const userTurns = conversation.filter(turn => turn.sender === "You");
+    const fullText = userTurns.map(turn => turn.text).join(" ");
+    const elapsedMinutes = elapsedSeconds > 0 ? elapsedSeconds / 60 : 0.01;
+    const wordCount = fullText.trim().split(/\s+/).filter(Boolean).length;
+    const wpm = Math.round(wordCount / elapsedMinutes);
+    const analysis = analyzeSpeechText(fullText, elapsedSeconds);
+    return {
+      wpm: isNaN(wpm) ? 0 : wpm,
+      fillerCount: analysis.totalFillers,
+      wordCount
+    };
+  }, [conversation, elapsedSeconds]);
 
   // ── Push Log Helper ──────────────────────────────────────────────
   const pushLog = useCallback((message, type = "info") => {
@@ -826,7 +843,7 @@ export default function InterviewChamber({ sessionId, onComplete }) {
           </div>
 
           {/* Timer and Question Counters */}
-          <div className="absolute top-4 right-4 flex items-center gap-3">
+          <div className="absolute top-4 right-4 flex flex-wrap items-center justify-end gap-3 max-w-[80%]">
             <div className="flex items-center gap-1.5 bg-navy-950/80 border border-white/5 rounded-full px-3 py-1 text-xs font-mono text-gray-300">
               <span className="text-gray-500 text-[10px] uppercase font-bold">Time:</span>
               <span className={`font-bold ${elapsedSeconds < 600 ? "text-cyan-400" : "text-emerald-400"}`}>
@@ -843,10 +860,18 @@ export default function InterviewChamber({ sessionId, onComplete }) {
                 {conversation.filter(turn => turn.sender === "AI").length}
               </span>
             </div>
+            <div className="flex items-center gap-1.5 bg-navy-950/80 border border-white/5 rounded-full px-3 py-1 text-xs font-mono text-gray-300">
+              <span className="text-gray-500 text-[10px] uppercase font-bold">Pacing:</span>
+              <span className="font-bold text-indigo-400">{speechStats.wpm} WPM</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-navy-950/80 border border-white/5 rounded-full px-3 py-1 text-xs font-mono text-gray-300">
+              <span className="text-gray-500 text-[10px] uppercase font-bold">Fillers:</span>
+              <span className={`font-bold ${speechStats.fillerCount > 5 ? "text-rose-400" : "text-cyan-400"}`}>{speechStats.fillerCount}</span>
+            </div>
           </div>
 
           {/* Glowing Orb Speaker Centerpiece */}
-          <div className="relative mb-6">
+          <div className="relative mb-4">
             <div className={`absolute -inset-4 rounded-full blur-xl opacity-30 transition-all duration-500 ${
               aiSpeaking ? "bg-indigo-500 scale-125" : "bg-cyan-500 scale-100"
             }`} />
@@ -857,6 +882,11 @@ export default function InterviewChamber({ sessionId, onComplete }) {
             }`}>
               <FiCpu className={`text-4xl transition ${aiSpeaking ? "text-indigo-400" : "text-cyan-400"}`} />
             </div>
+          </div>
+
+          {/* Audio Waveform Visualizer */}
+          <div className="mb-4 w-full max-w-xs relative z-10">
+            <WaveformVisualizer stream={micStreamRef.current} isRecording={interviewStarted && !isMuted && !isSubmitting} />
           </div>
 
           <div className="space-y-2 relative z-10">

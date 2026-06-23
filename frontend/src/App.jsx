@@ -15,6 +15,9 @@ import ResumePage from "./components/ResumePage";
 import QuestionBank from "./components/QuestionBank";
 import PracticeSession from "./components/PracticeSession";
 import PublicReport from "./components/PublicReport";
+import SSBSimulator from "./components/SSBSimulator";
+import FlashcardsPage from "./components/FlashcardsPage";
+import SchedulerPage from "./components/SchedulerPage";
 import { FiX, FiCpu, FiFileText, FiBookOpen, FiUser, FiActivity } from "react-icons/fi";
 
 const API = axios.create({
@@ -776,6 +779,32 @@ export default function App() {
           />
         )}
 
+        {/* SSB Timed Psychometric Simulator */}
+        {view === "ssb-simulator" && (
+          <SSBSimulator 
+            onClose={() => setView("dashboard")}
+            addToast={addToast}
+          />
+        )}
+
+        {/* AI Study Flashcards View */}
+        {view === "flashcards" && user && (
+          <FlashcardsPage 
+            user={user}
+            addToast={addToast}
+            onBack={() => setView("dashboard")}
+          />
+        )}
+
+        {/* Peer Match Scheduler View */}
+        {view === "scheduler" && user && (
+          <SchedulerPage 
+            user={user}
+            addToast={addToast}
+            onBack={() => setView("dashboard")}
+          />
+        )}
+
       </main>
 
       <OnboardingModal
@@ -860,6 +889,9 @@ export default function App() {
                 { title: "Curated Question Bank", view: "question-bank" },
                 { title: "My Profile Details", view: "profile" },
                 { title: "Launch AI Mock Interview", view: "onboarding" },
+                { title: "SSB Timed Psychometric Simulator", view: "ssb-simulator" },
+                { title: "AI Study Flashcards", view: "flashcards" },
+                { title: "Peer Match Scheduler", view: "scheduler" },
               ]
                 .filter(opt => opt.title.toLowerCase().includes(paletteSearch.toLowerCase()))
                 .map((opt, i) => (

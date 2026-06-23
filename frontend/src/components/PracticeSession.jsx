@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { FiMic, FiMicOff, FiSend, FiX, FiCheckCircle, FiChevronRight, FiFileText, FiMessageSquare, FiAlertCircle, FiCode, FiHelpCircle, FiZap, FiCpu } from "react-icons/fi";
+import { FiMic, FiMicOff, FiSend, FiX, FiCheckCircle, FiChevronRight, FiFileText, FiMessageSquare, FiAlertCircle, FiCode, FiHelpCircle, FiZap, FiCpu, FiPlay, FiCopy, FiCheck } from "react-icons/fi";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
+import { analyzeSpeechText } from "../utils/SpeechAnalyzer";
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL 
@@ -42,6 +43,42 @@ function solve() {
   const [rubric, setRubric] = useState(null); // { overallScore, dimensions: { structure: { score, comment }... }, suggestions: [] }
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
+  // Dry Run States
+  const [dryRunning, setDryRunning] = useState(false);
+  const [dryRunResult, setDryRunResult] = useState(null); // { correctness, timeComplexity, spaceComplexity, correctnessDetail, suggestions, improvedCode }
+  const [copied, setCopied] = useState(false);
+
+  const handleDryRun = async () => {
+    if (!codeAnswer.trim()) {
+      addToast("Please write some code first.", "warning");
+      return;
+    }
+    setDryRunning(true);
+    setDryRunResult(null);
+    addToast("Dry running solution with AI...", "info");
+    try {
+      const res = await API.post("/code/assess", {
+        question: questionText,
+        code: codeAnswer,
+        language: codeLanguage
+      });
+      setDryRunResult(res.data);
+      addToast("Dry run complete!", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Failed to perform dry run.", "error");
+    } finally {
+      setDryRunning(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    addToast("Copied code to clipboard!", "success");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   // Refs
   const recognitionRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -72,18 +109,9 @@ function solve() {
   };
 
   const countFillersAndCalculateWPM = useCallback((text, durationSeconds) => {
-    if (!text) {
-      setFillerCount(0);
-      setWpm(0);
-      return;
-    }
-    const matches = text.match(FILLER_REGEX);
-    setFillerCount(matches ? matches.length : 0);
-
-    const words = text.trim().split(/\s+/).filter(Boolean).length;
-    const minutes = durationSeconds / 60;
-    const computedWpm = minutes > 0 ? Math.round(words / minutes) : 0;
-    setWpm(computedWpm);
+    const analysis = analyzeSpeechText(text, durationSeconds);
+    setFillerCount(analysis.totalFillers);
+    setWpm(analysis.wpm);
   }, []);
 
   // ── Start Speech Recognition ──────────────────────────────────────
@@ -625,6 +653,61 @@ function solve() {
                   />
                 </div>
 
+                {/* Dry Run Results Panel */}
+                {dryRunResult && (
+                  <div className="p-4 rounded-xl border border-white/5 bg-white/5 space-y-4 animate-fade-in text-xs max-h-[300px] overflow-y-auto">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                      <span className="font-bold uppercase tracking-wider text-[10px] text-indigo-400">Dry-Run Compilation Results</span>
+                      <button 
+                        onClick={() => setDryRunResult(null)}
+                        className="text-[10px] text-gray-500 hover:text-white font-bold"
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2 rounded-lg bg-navy-950/40 border border-white/5">
+                        <span className="block text-[8px] uppercase font-bold text-gray-500">Correctness</span>
+                        <span className={`text-[11px] font-bold ${
+                          dryRunResult.correctness?.toLowerCase().includes("correct") ? "text-emerald-400" : "text-amber-400"
+                        }`}>{dryRunResult.correctness}</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-navy-950/40 border border-white/5">
+                        <span className="block text-[8px] uppercase font-bold text-gray-500">Time Complexity</span>
+                        <span className="text-[11px] font-mono font-bold text-cyan-400">{dryRunResult.timeComplexity}</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-navy-950/40 border border-white/5">
+                        <span className="block text-[8px] uppercase font-bold text-gray-500">Space Complexity</span>
+                        <span className="text-[11px] font-mono font-bold text-cyan-400">{dryRunResult.spaceComplexity}</span>
+                      </div>
+                    </div>
+
+                    {dryRunResult.correctnessDetail && (
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-gray-400">Logic & Verification:</span>
+                        <p className="text-gray-300 leading-relaxed bg-navy-950/40 p-2.5 rounded-lg">{dryRunResult.correctnessDetail}</p>
+                      </div>
+                    )}
+
+                    {dryRunResult.improvedCode && (
+                      <div className="space-y-2 relative">
+                        <span className="text-[9px] uppercase font-bold text-gray-400">AI Refactored Solution:</span>
+                        <pre className="text-[10px] font-mono text-emerald-300 bg-black/30 p-3 rounded-lg overflow-x-auto max-h-[150px] leading-relaxed">
+                          {dryRunResult.improvedCode}
+                        </pre>
+                        <button
+                          onClick={() => copyToClipboard(dryRunResult.improvedCode)}
+                          className="absolute right-2 top-6 p-1.5 rounded-lg bg-white/5 border border-white/5 text-gray-400 hover:text-white"
+                          title="Copy Improved Code"
+                        >
+                          {copied ? <FiCheck className="text-emerald-400" /> : <FiCopy />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* AI Hint Section */}
                 {hint && (
                   <div className="p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 text-xs text-amber-300 flex items-start gap-2.5 animate-fade-in">
@@ -636,28 +719,51 @@ function solve() {
                   </div>
                 )}
                 
-                <div className="flex justify-between items-center pt-1">
-                  <button
-                    type="button"
-                    onClick={handleAskHint}
-                    disabled={askingHint}
-                    className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 flex items-center gap-1.5 transition disabled:opacity-50"
-                  >
-                    {askingHint ? (
-                      <>
-                        <svg className="animate-spin h-3 w-3 text-white" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Loading Hint...
-                      </>
-                    ) : (
-                      <>
-                        <FiHelpCircle className="text-sm" /> Ask AI Hint
-                      </>
-                    )}
-                  </button>
-                  <p className="text-[10px] text-gray-500 font-medium font-mono">Ctrl + Enter to compile & grade</p>
+                <div className="flex justify-between items-center pt-1 gap-2">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAskHint}
+                      disabled={askingHint}
+                      className="px-3 py-2 text-[11px] font-semibold rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 flex items-center gap-1 transition disabled:opacity-50"
+                    >
+                      {askingHint ? (
+                        <>
+                          <svg className="animate-spin h-3 w-3 text-white" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <FiHelpCircle className="text-xs" /> Ask Hint
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDryRun}
+                      disabled={dryRunning}
+                      className="px-3 py-2 text-[11px] font-semibold rounded-xl bg-indigo-600/20 border border-indigo-500/35 text-indigo-300 hover:bg-indigo-600/35 flex items-center gap-1 transition disabled:opacity-50"
+                    >
+                      {dryRunning ? (
+                        <>
+                          <svg className="animate-spin h-3 w-3 text-white" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Dry Running...
+                        </>
+                      ) : (
+                        <>
+                          <FiZap className="text-xs" /> Dry Run Code
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500 font-medium font-mono">Ctrl + Enter to submit</p>
                 </div>
               </div>
             )}

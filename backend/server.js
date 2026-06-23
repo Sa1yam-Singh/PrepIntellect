@@ -731,6 +731,422 @@ app.get("/api/users/:email", async (req, res) => {
   }
 });
 
+// ── POST /api/resume/optimize ────────────────────────────────────
+app.post("/api/resume/optimize", async (req, res) => {
+  try {
+    const { resumeText, jobDescription } = req.body;
+    if (!resumeText || !jobDescription) {
+      return res.status(400).json({ error: "Both resumeText and jobDescription are required." });
+    }
+
+    const prompt = `
+You are an expert ATS (Applicant Tracking System) optimizer and professional resume evaluator.
+Compare the candidate's Resume Text against the Job Description.
+
+Resume Text:
+"""
+${resumeText}
+"""
+
+Job Description:
+"""
+${jobDescription}
+"""
+
+Evaluate the match percentage, identify critical missing keywords/skills, suggest actionable improvements, and provide 3 example STAR bullet rewrites based on their skills.
+
+Return your response strictly as a single JSON object. Do NOT wrap it in markdown blockquotes or code blocks.
+Response JSON structure:
+{
+  "matchPercentage": <integer 0-100>,
+  "missingKeywords": ["keyword1", "keyword2", "keyword3"],
+  "suggestions": ["suggestion1", "suggestion2"],
+  "bulletRewrites": [
+    {
+      "original": "Short description of a typical bullet that could be improved based on their resume",
+      "rewritten": "Impactful STAR bullet point using action verbs and metrics"
+    }
+  ]
+}
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const response = await geminiModel.generateContent(prompt);
+      return response.response.text().trim();
+    });
+
+    let cleanJson = result;
+    if (cleanJson.startsWith("```")) {
+      cleanJson = cleanJson.replace(/^```json\s*/, "").replace(/```$/, "").trim();
+    }
+
+    const analysis = JSON.parse(cleanJson);
+    res.json(analysis);
+  } catch (err) {
+    console.error("Resume optimization error:", err);
+    res.status(500).json({ error: "Failed to optimize resume: " + err.message });
+  }
+});
+
+// ── POST /api/resume/rewrite-bullet ──────────────────────────────
+app.post("/api/resume/rewrite-bullet", async (req, res) => {
+  try {
+    const { bulletText } = req.body;
+    if (!bulletText) {
+      return res.status(400).json({ error: "bulletText is required." });
+    }
+
+    const prompt = `
+You are a professional resume writer. Rewrite the following resume bullet point to follow the STAR format (Situation, Task, Action, Result). 
+Ensure it uses strong action verbs, highlights achievements, and includes placeholders for metrics (e.g., "[X]%").
+
+Original Bullet: "${bulletText}"
+
+Return ONLY the single rewritten bullet string. Do not add explanations, quotes, or JSON formatting.
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const response = await geminiModel.generateContent(prompt);
+      return response.response.text().trim();
+    });
+
+    res.json({ rewritten: result });
+  } catch (err) {
+    console.error("Bullet rewrite error:", err);
+    res.status(500).json({ error: "Failed to rewrite bullet: " + err.message });
+  }
+});
+
+// ── POST /api/ssb/evaluate ───────────────────────────────────────
+app.post("/api/ssb/evaluate", async (req, res) => {
+  try {
+    const { watAnswers, srtAnswers, tatAnswer } = req.body;
+    
+    const prompt = `
+You are a senior Military Psychologist and member of the Services Selection Board (SSB).
+Evaluate the candidate's psychometric and situational responses from the timed SSB tests.
+
+--- WORD ASSOCIATION TEST (WAT) RESPONSES ---
+${watAnswers?.map((a, i) => `Word: "${a.word}" -> Candidate Response: "${a.answer}"`).join("\n") || "No responses."}
+
+--- SITUATION REACTION TEST (SRT) RESPONSES ---
+${srtAnswers?.map((a, i) => `Situation: "${a.situation}" -> Candidate Response: "${a.answer}"`).join("\n") || "No responses."}
+
+--- THEMATIC APPERCEPTION TEST (TAT) STORY ---
+"${tatAnswer || "No story provided."}"
+
+Your job is to assess the candidate's suitability against the 15 standard Officer Like Qualities (OLQs), structured under:
+1. Planning & Organizing (Effective Intelligence, Reasoning, Organizing, Expression)
+2. Social Adjustment (Adaptability, Cooperation, Responsibility)
+3. Social Effectiveness (Initiative, Self-Confidence, Speed of Decision, Ability to Influence, Liveliness)
+4. Dynamic (Determination, Courage, Stamina)
+
+Provide an overall rating out of 100, specific ratings (out of 10) for 5 key OLQs (Effective Intelligence, Social Adaptability, Liveliness, Courage, Cooperation), a list of strengths, a list of development areas, and a detailed psychologist's assessment summary.
+
+Return your response strictly as a single JSON object. Do NOT wrap it in markdown code blocks.
+Response JSON structure:
+{
+  "score": <integer 0-100>,
+  "olqScores": {
+    "effectiveIntelligence": <integer 1-10>,
+    "socialAdaptability": <integer 1-10>,
+    "liveliness": <integer 1-10>,
+    "courage": <integer 1-10>,
+    "cooperation": <integer 1-10>
+  },
+  "strengths": ["Strength 1", "Strength 2"],
+  "weaknesses": ["Improvement area 1", "Improvement area 2"],
+  "detailedFeedback": "Detailed psychometric writeup summarizing the candidate's OLQ traits..."
+}
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const response = await geminiModel.generateContent(prompt);
+      return response.response.text().trim();
+    });
+
+    let cleanJson = result;
+    if (cleanJson.startsWith("```")) {
+      cleanJson = cleanJson.replace(/^```json\s*/, "").replace(/```$/, "").trim();
+    }
+
+    const evaluation = JSON.parse(cleanJson);
+    res.json(evaluation);
+  } catch (err) {
+    console.error("SSB evaluation error:", err);
+    res.status(500).json({ error: "Failed to evaluate SSB responses: " + err.message });
+  }
+});
+
+// ── POST /api/code/assess ────────────────────────────────────────
+app.post("/api/code/assess", async (req, res) => {
+  try {
+    const { question, code, language } = req.body;
+    if (!question || !code) {
+      return res.status(400).json({ error: "question and code are required." });
+    }
+
+    const prompt = `
+You are a Senior Software Engineer and technical interviewer at a tier-1 technology company.
+Review the following code solution written in ${language || "Javascript"} to the coding question.
+
+Question:
+"${question}"
+
+Code Solution:
+\`\`\`${language || "javascript"}
+${code}
+\`\`\`
+
+Analyze the code and evaluate:
+1. Correctness (identify logic bugs, edge cases that might fail, syntactic issues).
+2. Time Complexity (expressed in Big O notation).
+3. Space Complexity (expressed in Big O notation).
+4. Provide 2 specific suggestions to optimize or refactor.
+5. Provide a cleaner, fully refactored and working version of the code that resolves any issues.
+
+Return your response strictly as a single JSON object. Do NOT wrap it in markdown code blocks.
+Response JSON structure:
+{
+  "correctness": "Correct / Incorrect / Has Bugs / Partial",
+  "timeComplexity": "O(N log N) / O(N^2) / etc.",
+  "spaceComplexity": "O(N) / O(1) / etc.",
+  "correctnessDetail": "Detail explaining any bugs or correctness...",
+  "suggestions": ["suggestion1", "suggestion2"],
+  "improvedCode": "Fully refactored clean version of the code"
+}
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const response = await geminiModel.generateContent(prompt);
+      return response.response.text().trim();
+    });
+
+    let cleanJson = result;
+    if (cleanJson.startsWith("```")) {
+      cleanJson = cleanJson.replace(/^```json\s*/, "").replace(/```$/, "").trim();
+    }
+
+    const assessment = JSON.parse(cleanJson);
+    res.json(assessment);
+  } catch (err) {
+    console.error("Code assessment error:", err);
+    res.status(500).json({ error: "Failed to assess code: " + err.message });
+  }
+});
+
+// ── GET /api/flashcards/:email ───────────────────────────────────
+app.get("/api/flashcards/:email", async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    // Fallback: If no cards are generated, initialize some default ones
+    if (user.flashcards.length === 0) {
+      const defaultCards = [
+        { question: "What is the STAR Method for behavioral questions?", answer: "Situation (context), Task (goal), Action (what you did), and Result (quantifiable outcome). Ensure 70% of your time is spent on Action and Result.", category: "Behavioral" },
+        { question: "How does a Hash Map achieve O(1) average lookup?", answer: "By passing the key through a hash function to get an index, then resolving collisions via Chaining (linked lists/trees) or Open Addressing.", category: "Data Structures" },
+        { question: "Explain horizontal vs vertical scaling of databases.", answer: "Vertical scaling increases resources on a single machine (CPU, RAM). Horizontal scaling adds more machines, requiring sharding or replication.", category: "System Design" },
+        { question: "How would you handle a conflict with a manager?", answer: "Discuss privately, align on goals using metrics, seek compromise, and support the final decision productively even if disagreed.", category: "Behavioral" },
+        { question: "What is the difference between TCP and UDP?", answer: "TCP is connection-oriented, reliable, and guarantees order (handshake). UDP is connectionless, fast, and does not guarantee delivery (streaming/gaming).", category: "Networking" }
+      ];
+      user.flashcards = defaultCards;
+      await user.save();
+    }
+
+    res.json(user.flashcards);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/flashcards/generate ───────────────────────────────
+app.post("/api/flashcards/generate", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "email is required." });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    // Fetch past completed sessions
+    const sessions = await Session.find({ userId: user._id, status: "completed" })
+      .limit(3)
+      .lean();
+
+    const weaknesses = sessions.flatMap(s => s.finalEvaluation?.weaknesses || []);
+    const weakContext = weaknesses.length > 0 
+      ? `Specifically target these weak areas identified in past mocks: ${weaknesses.join(", ")}.`
+      : `Generate general prep cards related to their career track "${user.targetRole}" and skills "${user.skillsKeywords.join(", ")}".`;
+
+    const prompt = `
+You are a senior prep coach. Create 5 personalized study flashcards tailored to the candidate's target role: "${user.targetRole}" and category: "${user.category}".
+${weakContext}
+
+For each card, provide:
+1. question: A short, challenging query.
+2. answer: A concise, technical or structured answer (approx. 2-3 sentences).
+3. category: The subject area (e.g. "Algorithms", "STAR Behavioral", "System Design", "Medical Ethics", "OLQ Duty").
+
+Return your response strictly as a single JSON array of objects. Do NOT wrap it in markdown code blocks.
+Response JSON structure:
+[
+  { "question": "Card question 1?", "answer": "Card answer explanation...", "category": "Category name" },
+  ...
+]
+`;
+
+    const result = await retryWithBackoff(async () => {
+      const response = await geminiModel.generateContent(prompt);
+      return response.response.text().trim();
+    });
+
+    let cleanJson = result;
+    if (cleanJson.startsWith("```")) {
+      cleanJson = cleanJson.replace(/^```json\s*/, "").replace(/```$/, "").trim();
+    }
+
+    const cards = JSON.parse(cleanJson);
+    if (Array.isArray(cards)) {
+      user.flashcards.push(...cards.map(c => ({
+        question: c.question,
+        answer: c.answer,
+        category: c.category || "General",
+        reviewCount: 0
+      })));
+      await user.save();
+    }
+
+    res.json(user.flashcards);
+  } catch (err) {
+    console.error("Flashcards generation error:", err);
+    res.status(500).json({ error: "Failed to generate cards: " + err.message });
+  }
+});
+
+// ── POST /api/flashcards/review ─────────────────────────────────
+app.post("/api/flashcards/review", async (req, res) => {
+  try {
+    const { email, question } = req.body;
+    if (!email || !question) {
+      return res.status(400).json({ error: "email and question are required." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    const card = user.flashcards.find(c => c.question === question);
+    if (card) {
+      card.reviewCount = (card.reviewCount || 0) + 1;
+      await user.save();
+    }
+
+    res.json({ success: true, flashcards: user.flashcards });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/scheduler/availability ─────────────────────────────
+app.post("/api/scheduler/availability", async (req, res) => {
+  try {
+    const { email, availability } = req.body;
+    if (!email || !Array.isArray(availability)) {
+      return res.status(400).json({ error: "email and availability array are required." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    user.availability = availability;
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/scheduler/matches ──────────────────────────────────
+app.get("/api/scheduler/matches", async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.query.email || "");
+    if (!email) return res.status(400).json({ error: "email query parameter is required." });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    // Find other users in the same category who have specified availability
+    const matches = await User.find({
+      email: { $ne: email },
+      category: user.category,
+      "availability.0": { $exists: true }
+    })
+      .select("name email targetRole availability category")
+      .lean();
+
+    res.json(matches);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/scheduler/book ────────────────────────────────────
+app.post("/api/scheduler/book", async (req, res) => {
+  try {
+    const { email, peerEmail, dayOfWeek, startTime, endTime } = req.body;
+    if (!email || !peerEmail || !dayOfWeek || !startTime || !endTime) {
+      return res.status(400).json({ error: "All booking details are required." });
+    }
+
+    const user = await User.findOne({ email });
+    const peer = await User.findOne({ email: peerEmail });
+
+    if (!user || !peer) {
+      return res.status(404).json({ error: "User or peer not found." });
+    }
+
+    // Send calendar booking notification email to User
+    const inviteHtmlForUser = `
+      <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #f3f4f6; padding: 40px 20px; max-width: 600px; margin: 0 auto; border-radius: 16px; border: 1px solid rgba(99, 102, 241, 0.2);">
+        <h2 style="color: #ffffff; text-align: center;">Mock Interview Confirmed! 🤝</h2>
+        <p>Hi <strong>${user.name}</strong>,</p>
+        <p>Your peer mock practice session has been successfully scheduled.</p>
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 4px 0;"><strong>Peer Partner:</strong> ${peer.name} (${peer.targetRole})</p>
+          <p style="margin: 4px 0;"><strong>Scheduled Time:</strong> ${dayOfWeek} from ${startTime} to ${endTime}</p>
+        </div>
+        <p>To join your video mock, simply open the platform and enter the Peer Meet Room.</p>
+        <div style="text-align: center; margin-top: 30px;">
+          <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}" style="background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 10px; font-weight: bold; display: inline-block;">
+            Launch Peer Room
+          </a>
+        </div>
+      </div>
+    `;
+
+    // Send to peer
+    const inviteHtmlForPeer = inviteHtmlForUser.replace(`Hi <strong>${user.name}</strong>`, `Hi <strong>${peer.name}</strong>`)
+                                              .replace(`Partner:</strong> ${peer.name} (${peer.targetRole})`, `Partner:</strong> ${user.name} (${user.targetRole})`);
+
+    // Dispatch emails asynchronously
+    const { sendEmail } = require("./utils/emailService");
+    await Promise.all([
+      sendEmail({ to: user.email, subject: `Mock Interview Scheduled with ${peer.name}! 🤝`, html: inviteHtmlForUser }),
+      sendEmail({ to: peer.email, subject: `Mock Interview Scheduled with ${user.name}! 🤝`, html: inviteHtmlForPeer })
+    ]);
+
+    res.json({ success: true, message: "Booking confirmed! Calendar invitations dispatched." });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+
+
+
 // ── GET /api/stats/:email ───────────────────────────────────────
 // Aggregated stats for the dashboard — real data, no fakes
 app.get("/api/stats/:email", async (req, res) => {
@@ -1288,6 +1704,7 @@ ${text}
     try {
       const cleaned = resultText.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       jsonResult = JSON.parse(cleaned);
+      jsonResult.resumeText = text;
     } catch (err) {
       console.error("Failed to parse AI JSON response:", err.message);
       throw new Error(`The AI returned an invalid or unparseable JSON response structure. Detailed error: ${err.message}`);

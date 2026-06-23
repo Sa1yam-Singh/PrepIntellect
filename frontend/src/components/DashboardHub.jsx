@@ -432,34 +432,30 @@ export default function DashboardHub({ user, onStartAIMock, onViewReport, onJoin
             <div className="glass-card p-5 hover:border-teal-500/30 transition duration-300 flex flex-col justify-between group">
               <div>
                 <span className="badge bg-teal-500/10 text-teal-300 border border-teal-500/20 mb-3">Co-practice</span>
-                <h4 className="text-base font-bold text-white mb-1.5">👥 Match with Peer</h4>
-                <p className="text-xs text-gray-400 leading-relaxed mb-4">Practice mock scoring rubrics together in an online video room.</p>
+                <h4 className="text-base font-bold text-white mb-1.5">👥 Peer Match Scheduler</h4>
+                <p className="text-xs text-gray-400 leading-relaxed mb-4">Set your availability slots and book live peer co-practice sessions.</p>
               </div>
-              
-              {peerState === null && (
-                <button onClick={handleMatchPeer} className="btn-secondary w-full py-2.5 text-xs">Match Online</button>
-              )}
-              {peerState === "matching" && (
-                <div className="text-center py-2 bg-purple-500/10 border border-purple-500/20 rounded-xl text-purple-300 text-xs font-semibold flex items-center justify-center gap-1.5">
-                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Matching...
-                </div>
-              )}
-              {peerState === "matched" && (
-                <button 
-                  onClick={() => {
-                    const code = "meet-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-                    onJoinMeetRoom(code, true);
-                    setPeerState(null);
-                  }}
-                  className="btn-primary w-full bg-gradient-to-r from-emerald-600 to-teal-600 py-2.5 text-xs"
-                >
-                  Enter Peer Meet
-                </button>
-              )}
+              <button onClick={() => navigateToView("scheduler")} className="btn-secondary w-full py-2.5 text-xs">Open Scheduler</button>
+            </div>
+
+            {/* AI Study Flashcards */}
+            <div className="glass-card p-5 hover:border-indigo-500/30 transition duration-300 flex flex-col justify-between group">
+              <div>
+                <span className="badge bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 mb-3">Recall</span>
+                <h4 className="text-base font-bold text-white mb-1.5">🧠 AI Study Flashcards</h4>
+                <p className="text-xs text-gray-400 leading-relaxed mb-4">Review active recall cards dynamically generated based on your weak areas.</p>
+              </div>
+              <button onClick={() => navigateToView("flashcards")} className="btn-secondary w-full py-2.5 text-xs">Review Cards</button>
+            </div>
+
+            {/* SSB Psychometric Simulator */}
+            <div className="glass-card p-5 hover:border-rose-500/30 transition duration-300 flex flex-col justify-between group">
+              <div>
+                <span className="badge bg-rose-500/10 text-rose-300 border border-rose-500/20 mb-3">Defense Prep</span>
+                <h4 className="text-base font-bold text-white mb-1.5">⚔️ SSB Defense Simulator</h4>
+                <p className="text-xs text-gray-400 leading-relaxed mb-4">Practice timed WAT, SRT, and TAT psychological tests scored against 15 OLQs.</p>
+              </div>
+              <button onClick={() => navigateToView("ssb-simulator")} className="btn-secondary w-full py-2.5 text-xs font-semibold">Start Simulator</button>
             </div>
           </div>
 

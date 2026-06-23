@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { FiUploadCloud, FiFileText, FiAward, FiArrowRight, FiCheckCircle, FiAlertCircle, FiLayers } from "react-icons/fi";
+import { FiUploadCloud, FiFileText, FiAward, FiArrowRight, FiCheckCircle, FiAlertCircle, FiLayers, FiCopy, FiCheck, FiCpu } from "react-icons/fi";
 import axios from "axios";
 
 const API = axios.create({
@@ -43,6 +43,62 @@ export default function ResumePage({ onStartPractice, addToast }) {
   const [data, setData] = useState(null); // { skills: [], questions: { behavioral: [], technical: [], roleSpecific: [] } }
   const [activeTab, setActiveTab] = useState("behavioral");
   const [resultsViewTab, setResultsViewTab] = useState("analysis");
+
+  // Optimizer States
+  const [jobDescription, setJobDescription] = useState("");
+  const [optimizing, setOptimizing] = useState(false);
+  const [optData, setOptData] = useState(null); // { matchPercentage, missingKeywords, suggestions, bulletRewrites }
+  const [bulletText, setBulletText] = useState("");
+  const [rewriting, setRewriting] = useState(false);
+  const [rewrittenBullet, setRewrittenBullet] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const handleOptimize = async () => {
+    if (!jobDescription.trim()) {
+      addToast("Please enter a job description.", "warning");
+      return;
+    }
+    setOptimizing(true);
+    addToast("Comparing resume against job description...", "info");
+    try {
+      const res = await API.post("/resume/optimize", {
+        resumeText: data?.resumeText || "Software developer with React/Node experience",
+        jobDescription
+      });
+      setOptData(res.data);
+      addToast("ATS Alignment Check Complete!", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Failed to perform ATS alignment check.", "error");
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  const handleRewriteBullet = async () => {
+    if (!bulletText.trim()) {
+      addToast("Please enter a bullet point.", "warning");
+      return;
+    }
+    setRewriting(true);
+    try {
+      const res = await API.post("/resume/rewrite-bullet", { bulletText });
+      setRewrittenBullet(res.data.rewritten);
+      addToast("Bullet point rewritten!", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Failed to rewrite bullet point.", "error");
+    } finally {
+      setRewriting(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    addToast("Copied to clipboard!", "success");
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -264,6 +320,16 @@ export default function ResumePage({ onStartPractice, addToast }) {
             >
               Practice Questions
             </button>
+            <button
+              onClick={() => setResultsViewTab("optimizer")}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-200 ${
+                resultsViewTab === "optimizer"
+                  ? "border-indigo-500 text-white font-bold"
+                  : "border-transparent text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              ATS & Job Matcher
+            </button>
           </div>
 
           {resultsViewTab === "analysis" ? (
@@ -413,7 +479,7 @@ export default function ResumePage({ onStartPractice, addToast }) {
                 </div>
               </div>
             </div>
-          ) : (
+          ) : resultsViewTab === "questions" ? (
             /* Practice Questions Tab */
             <div className="space-y-6 animate-fade-in">
               {/* Question Grid Tabs */}
@@ -457,6 +523,153 @@ export default function ResumePage({ onStartPractice, addToast }) {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          ) : (
+            /* ATS & Job Matcher Tab */
+            <div className="space-y-8 animate-fade-in">
+              <div className="grid md:grid-cols-3 gap-8 items-start">
+                
+                {/* Left Side: Job Description input */}
+                <div className="md:col-span-2 space-y-6">
+                  <div className="glass-card p-6 space-y-4">
+                    <div>
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <FiCpu className="text-indigo-400" />
+                        Target Job Description
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1">Paste the job details below to run an ATS check and analyze keyword matching.</p>
+                    </div>
+                    
+                    <textarea
+                      value={jobDescription}
+                      onChange={(e) => setJobDescription(e.target.value)}
+                      placeholder="Paste the target job description here..."
+                      className="auth-input min-h-[200px] resize-none"
+                    />
+                    
+                    <button
+                      onClick={handleOptimize}
+                      disabled={optimizing}
+                      className="btn-primary w-full py-3 text-xs"
+                    >
+                      {optimizing ? "Analyzing Alignment..." : "Run ATS Alignment Check"}
+                    </button>
+                  </div>
+
+                  {/* Bullet point rewriter tool */}
+                  <div className="glass-card p-6 space-y-4">
+                    <div>
+                      <h3 className="text-base font-bold text-white">AI STAR Bullet Point Rewriter</h3>
+                      <p className="text-xs text-gray-500 mt-1">Turn simple duty statements into strong, achievement-oriented STAR bullet points.</p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={bulletText}
+                        onChange={(e) => setBulletText(e.target.value)}
+                        placeholder="e.g. Worked on the website front-end and added search feature"
+                        className="auth-input"
+                      />
+                      
+                      <button
+                        onClick={handleRewriteBullet}
+                        disabled={rewriting}
+                        className="btn-secondary w-full py-2.5 text-xs border-indigo-500/20 text-indigo-300 hover:border-indigo-500/50"
+                      >
+                        {rewriting ? "Rewriting..." : "Format into STAR Bullet"}
+                      </button>
+                    </div>
+
+                    {rewrittenBullet && (
+                      <div className="mt-4 p-4 rounded-xl border border-white/5 bg-white/5 space-y-2 relative">
+                        <label className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">Rewritten STAR Bullet:</label>
+                        <p className="text-xs text-gray-300 leading-relaxed pr-8">{rewrittenBullet}</p>
+                        <button
+                          onClick={() => copyToClipboard(rewrittenBullet)}
+                          className="absolute right-3.5 top-3.5 p-2 rounded-lg bg-white/5 border border-white/5 text-gray-400 hover:text-white hover:bg-white/10 transition"
+                          title="Copy to clipboard"
+                        >
+                          {copied ? <FiCheck className="text-emerald-400" /> : <FiCopy />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Side: Match Results */}
+                <div className="space-y-6">
+                  {optData ? (
+                    <div className="space-y-6">
+                      
+                      {/* Match Percentage Widget */}
+                      <div className="glass-card-strong p-6 flex flex-col items-center justify-center text-center space-y-4">
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-400">ATS Match Rating</span>
+                        
+                        <div className="relative flex items-center justify-center w-28 h-28">
+                          <svg className="w-full h-full transform -rotate-90">
+                            <circle cx="56" cy="56" r="44" className="stroke-white/5" strokeWidth="8" fill="transparent" />
+                            <circle
+                              cx="56"
+                              cy="56"
+                              r="44"
+                              className={`${
+                                optData.matchPercentage >= 80 ? "stroke-emerald-500" : optData.matchPercentage >= 60 ? "stroke-amber-500" : "stroke-rose-500"
+                              } transition-all duration-1000`}
+                              strokeWidth="8"
+                              fill="transparent"
+                              strokeDasharray={2 * Math.PI * 44}
+                              strokeDashoffset={2 * Math.PI * 44 - (optData.matchPercentage / 100) * (2 * Math.PI * 44)}
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <div className="absolute flex flex-col items-center justify-center">
+                            <span className="text-3xl font-black text-white">{optData.matchPercentage}%</span>
+                          </div>
+                        </div>
+
+                        <span className="text-xs text-gray-500 font-medium">Based on keyword and experience overlap</span>
+                      </div>
+
+                      {/* Missing Keywords list */}
+                      <div className="glass-card p-6 space-y-4">
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Missing Keywords</h4>
+                        <div className="flex flex-wrap gap-1.5">
+                          {optData.missingKeywords?.map((keyword, i) => (
+                            <span key={i} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-500/10 border border-rose-500/20 text-rose-300">
+                              + {keyword}
+                            </span>
+                          ))}
+                          {(!optData.missingKeywords || optData.missingKeywords.length === 0) && (
+                            <p className="text-xs text-gray-500 italic">No major missing keywords detected!</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Improvement Suggestions */}
+                      <div className="glass-card p-6 space-y-3">
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">ATS Suggestions</h4>
+                        <ul className="space-y-2.5">
+                          {optData.suggestions?.map((sug, i) => (
+                            <li key={i} className="flex gap-2 text-xs text-gray-400 leading-relaxed">
+                              <span className="text-indigo-400 select-none">•</span>
+                              <span>{sug}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                    </div>
+                  ) : (
+                    <div className="glass-card p-8 text-center flex flex-col items-center justify-center opacity-60">
+                      <FiCpu className="text-3xl text-gray-500 mb-3 animate-pulse" />
+                      <h4 className="text-sm font-bold text-white">No analysis run yet</h4>
+                      <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Paste a target job description and run the alignment check to see your ATS score.</p>
+                    </div>
+                  )}
+                </div>
+
               </div>
             </div>
           )}
