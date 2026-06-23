@@ -56,6 +56,26 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    xp: {
+      type: Number,
+      default: 0,
+    },
+    streak: {
+      type: Number,
+      default: 0,
+    },
+    lastActiveDate: {
+      type: Date,
+      default: null,
+    },
+    lastWeeklyReportDate: {
+      type: Date,
+      default: null,
+    },
+    weeklyReportsSent: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );

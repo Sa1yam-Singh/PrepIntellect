@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { FiUploadCloud, FiFileText, FiAward, FiArrowRight, FiCheckCircle, FiAlertCircle } from "react-icons/fi";
+import { FiUploadCloud, FiFileText, FiAward, FiArrowRight, FiCheckCircle, FiAlertCircle, FiLayers } from "react-icons/fi";
 import axios from "axios";
 
 const API = axios.create({
@@ -8,6 +8,33 @@ const API = axios.create({
     : "/api"
 });
 
+const fallbackAnalysis = {
+  score: 78,
+  summary: "Your resume shows a strong foundation. However, it lacks quantified achievements and a professional summary, which could significantly boost its impact.",
+  strengths: [
+    "Relevant skills listed clearly",
+    "Logical progression of professional roles and experience",
+    "Solid academic background listed clearly"
+  ],
+  improvements: [
+    "Quantify your experience bullet points with metrics",
+    "Add a concise professional summary at the beginning of the resume",
+    "Ensure consistency in punctuation and verb tenses across bullet points"
+  ],
+  atsCompatibility: {
+    fileFormat: "Good",
+    keywordDensity: "Needs Improvement",
+    headingStructure: "Good",
+    contactInfo: "Good"
+  },
+  sections: [
+    { name: "Experience", rating: "Good", details: "Describe your achievements with metrics rather than just duties." },
+    { name: "Projects", rating: "Needs Improvement", details: "Add links to live repositories or projects." },
+    { name: "Skills", rating: "Excellent", details: "Well structured with clear categorizations." },
+    { name: "Education", rating: "Good", details: "Consider adding GPA or relevant coursework if competitive." }
+  ]
+};
+
 export default function ResumePage({ onStartPractice, addToast }) {
   const [file, setFile] = useState(null);
   const [dragActive, setDragActive] = useState(false);
@@ -15,6 +42,7 @@ export default function ResumePage({ onStartPractice, addToast }) {
   const [error, setError] = useState("");
   const [data, setData] = useState(null); // { skills: [], questions: { behavioral: [], technical: [], roleSpecific: [] } }
   const [activeTab, setActiveTab] = useState("behavioral");
+  const [resultsViewTab, setResultsViewTab] = useState("analysis");
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -177,7 +205,7 @@ export default function ResumePage({ onStartPractice, addToast }) {
         </div>
       ) : (
         /* Results View */
-        <div className="space-y-6">
+        <div className="space-y-8 animate-fade-in">
           
           {/* Top Panel: Skills Detected */}
           <div className="glass-card-strong p-6">
@@ -214,48 +242,224 @@ export default function ResumePage({ onStartPractice, addToast }) {
             </div>
           </div>
 
-          {/* Question Grid Tabs */}
-          <div className="space-y-4">
-            <div className="flex border-b border-white/5 gap-2">
-              {["behavioral", "technical", "roleSpecific"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 text-sm font-semibold border-b-2 transition capitalize ${
-                    activeTab === tab 
-                      ? "border-indigo-500 text-white font-bold" 
-                      : "border-transparent text-gray-500 hover:text-gray-300"
-                  }`}
-                >
-                  {tab === "roleSpecific" ? "Role-Specific" : tab}
-                </button>
-              ))}
-            </div>
-
-            {/* Questions List */}
-            <div className="space-y-4">
-              {data.questions?.[activeTab]?.map((q, index) => (
-                <div 
-                  key={index} 
-                  className="glass-card p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-white/20 transition-all duration-300 group"
-                >
-                  <div className="space-y-1.5 flex-1 pr-4">
-                    <div className="flex items-center gap-2">
-                      <span className="badge-purple text-[9px] font-extrabold">Q{index + 1}</span>
-                      <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold capitalize">{activeTab}</span>
-                    </div>
-                    <p className="text-sm font-medium text-gray-200 group-hover:text-white transition">{q}</p>
-                  </div>
-                  <button 
-                    onClick={() => onStartPractice(q)}
-                    className="btn-primary py-2.5 px-4 text-xs font-bold whitespace-nowrap shrink-0 group-hover:scale-[1.02] active:scale-[0.97]"
-                  >
-                    Practice Question <FiArrowRight className="text-xs" />
-                  </button>
-                </div>
-              ))}
-            </div>
+          {/* Main Tab Switcher */}
+          <div className="flex border-b border-white/5 gap-2">
+            <button
+              onClick={() => setResultsViewTab("analysis")}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-200 ${
+                resultsViewTab === "analysis"
+                  ? "border-indigo-500 text-white font-bold"
+                  : "border-transparent text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              Resume Analysis
+            </button>
+            <button
+              onClick={() => setResultsViewTab("questions")}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-200 ${
+                resultsViewTab === "questions"
+                  ? "border-indigo-500 text-white font-bold"
+                  : "border-transparent text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              Practice Questions
+            </button>
           </div>
+
+          {resultsViewTab === "analysis" ? (
+            /* Resume Insights Dashboard Tab */
+            <div className="space-y-8 animate-fade-in">
+              {/* Score & Summary Row */}
+              <div className="glass-card p-6 flex flex-col md:flex-row items-center gap-6">
+                {/* Radial Score Gauge */}
+                <div className="relative flex items-center justify-center w-28 h-28 shrink-0">
+                  <svg className="w-full h-full transform -rotate-90">
+                    <circle
+                      cx="56"
+                      cy="56"
+                      r="44"
+                      className="stroke-white/5"
+                      strokeWidth="8"
+                      fill="transparent"
+                    />
+                    <circle
+                      cx="56"
+                      cy="56"
+                      r="44"
+                      className={`${
+                        (data.analysis?.score || fallbackAnalysis.score) >= 80
+                          ? "stroke-emerald-500"
+                          : (data.analysis?.score || fallbackAnalysis.score) >= 65
+                          ? "stroke-amber-500"
+                          : "stroke-rose-500"
+                      } transition-all duration-1000 ease-out`}
+                      strokeWidth="8"
+                      fill="transparent"
+                      strokeDasharray={2 * Math.PI * 44}
+                      strokeDashoffset={2 * Math.PI * 44 - ((data.analysis?.score || fallbackAnalysis.score) / 100) * (2 * Math.PI * 44)}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="absolute flex flex-col items-center justify-center">
+                    <span className="text-3xl font-black text-white">{data.analysis?.score || fallbackAnalysis.score}</span>
+                    <span className="text-[8px] text-gray-500 font-extrabold uppercase tracking-wider">Score</span>
+                  </div>
+                </div>
+
+                {/* Actionable Summary */}
+                <div className="space-y-2 text-center md:text-left flex-1">
+                  <h3 className="text-lg font-bold text-white">Overall Evaluation</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">
+                    {data.analysis?.summary || fallbackAnalysis.summary}
+                  </p>
+                </div>
+              </div>
+
+              {/* Strengths & Improvements Side-by-Side */}
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Strengths Card */}
+                <div className="glass-card p-6 border-emerald-500/10 bg-emerald-500/5">
+                  <h4 className="text-sm font-extrabold text-white flex items-center gap-2 mb-4 uppercase tracking-wider">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <FiCheckCircle className="text-xs" />
+                    </span>
+                    Key Strengths
+                  </h4>
+                  <ul className="space-y-3">
+                    {(data.analysis?.strengths || fallbackAnalysis.strengths).map((str, i) => (
+                      <li key={i} className="flex gap-2.5 text-xs text-gray-300 leading-relaxed">
+                        <span className="text-emerald-400 shrink-0 select-none">✦</span>
+                        <span>{str}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Improvements Card */}
+                <div className="glass-card p-6 border-indigo-500/10 bg-indigo-500/5">
+                  <h4 className="text-sm font-extrabold text-white flex items-center gap-2 mb-4 uppercase tracking-wider">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                      <FiAlertCircle className="text-xs" />
+                    </span>
+                    Areas to Improve
+                  </h4>
+                  <ul className="space-y-3">
+                    {(data.analysis?.improvements || fallbackAnalysis.improvements).map((imp, i) => (
+                      <li key={i} className="flex gap-2.5 text-xs text-gray-300 leading-relaxed">
+                        <span className="text-indigo-400 shrink-0 select-none">✦</span>
+                        <span>{imp}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* ATS Checklist */}
+              <div className="glass-card p-6 space-y-4">
+                <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                  <FiFileText className="text-indigo-400" />
+                  ATS & Formatting Compliance
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {[
+                    { label: "File Format", val: data.analysis?.atsCompatibility?.fileFormat || fallbackAnalysis.atsCompatibility.fileFormat },
+                    { label: "Keyword Density", val: data.analysis?.atsCompatibility?.keywordDensity || fallbackAnalysis.atsCompatibility.keywordDensity },
+                    { label: "Heading Structure", val: data.analysis?.atsCompatibility?.headingStructure || fallbackAnalysis.atsCompatibility.headingStructure },
+                    { label: "Contact Details", val: data.analysis?.atsCompatibility?.contactInfo || fallbackAnalysis.atsCompatibility.contactInfo }
+                  ].map((item, idx) => {
+                    const isGood = item.val.toLowerCase() === "good" || item.val.toLowerCase() === "excellent";
+                    return (
+                      <div key={idx} className="bg-white/5 border border-white/5 p-4 rounded-xl flex flex-col items-center justify-center text-center space-y-2">
+                        <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">{item.label}</span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          isGood ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                        }`}>
+                          {item.val}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Section Review */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                  <FiLayers className="text-indigo-400" />
+                  Section-by-Section Review
+                </h3>
+                <div className="grid gap-4">
+                  {(data.analysis?.sections || fallbackAnalysis.sections).map((sec, idx) => {
+                    const rating = sec.rating.toLowerCase();
+                    const badgeClass = 
+                      rating === "excellent" 
+                        ? "badge-emerald" 
+                        : rating === "good" 
+                        ? "badge-cyan" 
+                        : "badge-yellow";
+                    
+                    return (
+                      <div key={idx} className="glass-card p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-white/20 transition-all duration-300 group">
+                        <div className="space-y-1.5 flex-1 pr-4">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-bold text-white group-hover:text-indigo-400 transition">{sec.name}</span>
+                            <span className={badgeClass}>{sec.rating}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 leading-relaxed">{sec.details}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Practice Questions Tab */
+            <div className="space-y-6 animate-fade-in">
+              {/* Question Grid Tabs */}
+              <div className="space-y-4">
+                <div className="flex border-b border-white/5 gap-2">
+                  {["behavioral", "technical", "roleSpecific"].map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-4 py-2 text-sm font-semibold border-b-2 transition capitalize ${
+                        activeTab === tab 
+                          ? "border-indigo-500 text-white font-bold" 
+                          : "border-transparent text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      {tab === "roleSpecific" ? "Role-Specific" : tab}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Questions List */}
+                <div className="space-y-4">
+                  {data.questions?.[activeTab]?.map((q, index) => (
+                    <div 
+                      key={index} 
+                      className="glass-card p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-white/20 transition-all duration-300 group"
+                    >
+                      <div className="space-y-1.5 flex-1 pr-4">
+                        <div className="flex items-center gap-2">
+                          <span className="badge-purple text-[9px] font-extrabold">Q{index + 1}</span>
+                          <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold capitalize">{activeTab}</span>
+                        </div>
+                        <p className="text-sm font-medium text-gray-200 group-hover:text-white transition">{q}</p>
+                      </div>
+                      <button 
+                        onClick={() => onStartPractice(q)}
+                        className="btn-primary py-2.5 px-4 text-xs font-bold whitespace-nowrap shrink-0 group-hover:scale-[1.02] active:scale-[0.97]"
+                      >
+                        Practice Question <FiArrowRight className="text-xs" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       )}

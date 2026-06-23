@@ -6,6 +6,12 @@ import {
   FiCalendar, FiClock, FiCheckCircle, FiChevronRight, FiLogOut, FiTrendingUp 
 } from "react-icons/fi";
 
+const API = axios.create({
+  baseURL: import.meta.env.VITE_BACKEND_URL 
+    ? `${import.meta.env.VITE_BACKEND_URL}/api` 
+    : "/api"
+});
+
 export default function ProfilePage({ user, onLogout, onViewReport }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,8 +25,8 @@ export default function ProfilePage({ user, onLogout, onViewReport }) {
       try {
         const emailEncoded = encodeURIComponent(user.email);
         const [sessionsRes, statsRes] = await Promise.all([
-          axios.get(`/api/sessions/user/${emailEncoded}`),
-          axios.get(`/api/stats/${emailEncoded}`)
+          API.get(`/sessions/user/${emailEncoded}`),
+          API.get(`/stats/${emailEncoded}`)
         ]);
         setSessions(sessionsRes.data);
         setStats(statsRes.data);

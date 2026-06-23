@@ -75,6 +75,34 @@ export default function App() {
     }, 4000);
   }, []);
 
+  const refreshUserProfile = useCallback(async () => {
+    if (!user?.email) return;
+    try {
+      const dbRes = await API.get(`/users/${encodeURIComponent(user.email)}`);
+      setUser((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          xp: dbRes.data.xp,
+          streak: dbRes.data.streak,
+          targetRole: dbRes.data.targetRole,
+          experienceLevel: dbRes.data.experienceLevel,
+          category: dbRes.data.category,
+          skillsKeywords: dbRes.data.skillsKeywords || [],
+        };
+      });
+    } catch (err) {
+      console.log("Failed to refresh user profile:", err);
+    }
+  }, [user?.email]);
+
+  // Sync user profile data when switching views to dashboard or profile
+  useEffect(() => {
+    if (view === "dashboard" || view === "profile") {
+      refreshUserProfile();
+    }
+  }, [view, refreshUserProfile]);
+
   // Listen for public report paths on boot
   useEffect(() => {
     const path = window.location.pathname;
@@ -731,6 +759,8 @@ export default function App() {
         {view === "practice" && practiceQuestion && (
           <PracticeSession 
             questionText={practiceQuestion}
+            user={user}
+            refreshUser={refreshUserProfile}
             onClose={() => {
               setPracticeQuestion(null);
               setView("dashboard");

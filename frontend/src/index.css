@@ -156,7 +156,6 @@
   /* Animated gradient border */
   .animated-border {
     position: relative;
-    overflow: hidden;
   }
   .animated-border::after {
     content: '';
@@ -492,4 +491,21 @@
 [data-theme="light"] .bg-\[\#070b13\],
 [data-theme="light"] .bg-\[\#0a0e1a\] {
   background-color: var(--bg-secondary) !important;
+}
+
+/* Fix text contrast on buttons (primary, accent, danger) inside light mode */
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .btn-primary *,
+[data-theme="light"] .btn-accent,
+[data-theme="light"] .btn-accent *,
+[data-theme="light"] .btn-danger,
+[data-theme="light"] .btn-danger * {
+  color: #ffffff !important;
+}
+
+/* Force light background on Welcome Banner (.cyber-glow) in light mode */
+[data-theme="light"] .cyber-glow {
+  background: var(--bg-glass-card-strong) !important;
+  background-image: none !important;
+  border-color: var(--border-color) !important;
 }

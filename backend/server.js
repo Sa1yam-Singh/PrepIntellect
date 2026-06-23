@@ -11,6 +11,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const OpenAI = require("openai");
+const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs");
 const path = require("path");
 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
@@ -150,6 +151,7 @@ const MOCK_REACTIONS = [
 ];
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" });
 
 const allowedOrigins = [
   "http://localhost:5173",
@@ -1189,7 +1191,7 @@ app.post("/api/resume/upload", upload.single("resume"), async (req, res) => {
       return res.status(400).json({ error: "Resume file content is empty." });
     }
 
-    // Call Gemini API to extract skills and generate questions
+    // Call Gemini/OpenAI API to extract skills, generate questions, and analyze resume
     const systemPrompt = "You are an expert technical interviewer and resume parser.";
     const resumePrompt = `
 Parse the following resume text.
@@ -1198,6 +1200,13 @@ Parse the following resume text.
    - 5 Behavioral questions (STAR format related to projects or experience on their resume)
    - 5 Technical questions (fundamental and advanced topics based on their tech stack)
    - 5 Role-specific questions (scenario-based or specialized questions based on their target track)
+3. Analyze the resume and provide a detailed analysis report:
+   - score: Overall resume rating on a scale of 0 to 100.
+   - summary: A brief summary of the resume's overall quality and professional impact.
+   - strengths: A list of 3-4 key strengths observed.
+   - improvements: A list of 3-4 specific areas for improvement.
+   - atsCompatibility: An object evaluating fileFormat, keywordDensity, headingStructure, and contactInfo.
+   - sections: An array of section evaluations (e.g. Experience, Projects, Education, Skills) with ratings ("Excellent", "Good", "Needs Improvement") and details.
 
 Format your response as a JSON object with EXACTLY this structure (no markdown fences, pure JSON):
 {
@@ -1206,6 +1215,22 @@ Format your response as a JSON object with EXACTLY this structure (no markdown f
     "behavioral": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"],
     "technical": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"],
     "roleSpecific": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"]
+  },
+  "analysis": {
+    "score": 85,
+    "summary": "Overall resume summary...",
+    "strengths": ["Strength 1", "Strength 2", ...],
+    "improvements": ["Improvement 1", "Improvement 2", ...],
+    "atsCompatibility": {
+      "fileFormat": "Good",
+      "keywordDensity": "Good",
+      "headingStructure": "Good",
+      "contactInfo": "Good"
+    },
+    "sections": [
+      { "name": "Experience", "rating": "Good", "details": "Feedback..." },
+      { "name": "Projects", "rating": "Needs Improvement", "details": "Feedback..." }
+    ]
   }
 }
 
@@ -1213,52 +1238,59 @@ Resume Text:
 ${text}
 `;
 
-    const result = await retryWithBackoff(async () => {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: resumePrompt }
-        ],
-        temperature: 0.4,
-        response_format: { type: "json_object" }
-      });
-      return completion.choices[0].message.content;
-    });
+    let jsonResult = null;
+    let resultText = "";
+    let lastError = null;
 
-    let jsonResult;
+    // Try Anthropic Claude first if configured
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        console.log("[Resume Analysis] Contacting Anthropic Claude API...");
+        const response = await retryWithBackoff(async () => {
+          const message = await anthropic.messages.create({
+            model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022",
+            max_tokens: 4000,
+            system: systemPrompt,
+            messages: [
+              { role: "user", content: resumePrompt }
+            ]
+          });
+          return message.content[0].text;
+        });
+        resultText = response;
+        console.log("[Resume Analysis] Anthropic Claude call succeeded.");
+      } catch (err) {
+        console.error("Anthropic Claude failed, falling back to Gemini:", err.message);
+        lastError = err;
+      }
+    }
+
+    // Fallback to Google Gemini
+    if (!resultText) {
+      try {
+        console.log("[Resume Analysis] Contacting Google Gemini API...");
+        const response = await retryWithBackoff(async () => {
+          const resVal = await geminiModel.generateContent(`${systemPrompt}\n${resumePrompt}`);
+          return resVal.response.text();
+        });
+        resultText = response;
+        console.log("[Resume Analysis] Google Gemini call succeeded.");
+      } catch (err) {
+        console.error("Google Gemini failed:", err.message);
+        lastError = err;
+      }
+    }
+
+    if (!resultText) {
+      throw new Error(`AI Resume Analysis failed. Both Anthropic and Gemini APIs are currently unavailable. Details: ${lastError?.message || "Unknown error"}`);
+    }
+
     try {
-      const cleaned = result.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const cleaned = resultText.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       jsonResult = JSON.parse(cleaned);
     } catch (err) {
-      console.error("Failed to parse Gemini resume response, fallback to mock data", err);
-      // Fallback response if JSON fails
-      jsonResult = {
-        skills: ["Software Engineering", "Problem Solving", "Web Development", "Database Management"],
-        questions: {
-          behavioral: [
-            "Tell me about a project on your resume you are most proud of.",
-            "Describe a challenge you faced during a project and how you overcame it.",
-            "How do you handle conflict or differing opinions within a technical team?",
-            "Tell me about a time you had to learn a new technology quickly to solve a problem.",
-            "Describe a situation where a project deadline was at risk. How did you react?"
-          ],
-          technical: [
-            "Can you explain the difference between relational and non-relational databases?",
-            "What is REST, and what are the key characteristics of a RESTful API?",
-            "How does asynchronous execution work in modern JavaScript/Node.js?",
-            "Explain the concept of MVC architecture and its benefits in web development.",
-            "What are the best practices for securing APIs against common vulnerabilities like CSRF or SQL injection?"
-          ],
-          roleSpecific: [
-            "Based on your resume, how would you design the system architecture for a real-time messaging application?",
-            "How do you approach database schema design and normalization/denormalization trade-offs?",
-            "How would you set up a CI/CD pipeline for a web application described in your resume?",
-            "Explain how you would monitor and debug performance issues in a production server.",
-            "What criteria do you use to choose a specific programming language or framework for a new service?"
-          ]
-        }
-      };
+      console.error("Failed to parse AI JSON response:", err.message);
+      throw new Error(`The AI returned an invalid or unparseable JSON response structure. Detailed error: ${err.message}`);
     }
 
     res.json(jsonResult);

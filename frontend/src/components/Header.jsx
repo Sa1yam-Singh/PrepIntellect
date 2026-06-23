@@ -121,7 +121,17 @@ export default function Header({ currentView, setView, user, onLogout, openAuthM
         {/* User Auth Buttons / User Dropdown (Desktop) */}
         <div className="hidden md:flex items-center gap-4">
           {user ? (
-            <div className="relative" ref={dropdownRef}>
+            <>
+              {/* Streak and XP Badges */}
+              <div className="flex items-center gap-2 mr-1 animate-fade-in">
+                <span className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-xs font-bold text-purple-400 flex items-center gap-1" title="Daily Streak">
+                  ⚡ {user.streak || 0}d
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs font-bold text-yellow-400 flex items-center gap-1" title="Total XP">
+                  🏆 {user.xp || 0} XP
+                </span>
+              </div>
+              <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 hover:border-white/20 transition-all duration-200 group"
@@ -174,6 +184,7 @@ export default function Header({ currentView, setView, user, onLogout, openAuthM
                 </div>
               )}
             </div>
+            </>
           ) : (
             <>
               <button 
@@ -256,6 +267,15 @@ export default function Header({ currentView, setView, user, onLogout, openAuthM
                     <p className="text-sm font-semibold text-gray-200">{user.name}</p>
                     <p className="text-xs text-gray-500">{user.email}</p>
                   </div>
+                </div>
+                {/* Mobile Streak and XP Badges */}
+                <div className="flex gap-2">
+                  <span className="flex-1 py-2 text-center rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs font-bold text-purple-400">
+                    ⚡ {user.streak || 0}d streak
+                  </span>
+                  <span className="flex-1 py-2 text-center rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-xs font-bold text-yellow-400">
+                    🏆 {user.xp || 0} XP
+                  </span>
                 </div>
                 <button 
                   onClick={() => {

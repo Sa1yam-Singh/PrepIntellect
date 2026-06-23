@@ -20,7 +20,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = "login", onAu
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const isDummyFirebase = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY.includes("dummy");
+  const isDummyFirebase = !import.meta.env.VITE_FIREBASE_API_KEY || 
+    import.meta.env.VITE_FIREBASE_API_KEY.includes("dummy") || 
+    import.meta.env.VITE_FIREBASE_API_KEY === "AIzaSyBcnjYeJq4Le6VSCjNaH1YYTBsh42Dh5p4";
 
   const handleSubmit = async (e) => {
     e.preventDefault();

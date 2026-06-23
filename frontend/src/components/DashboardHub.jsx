@@ -38,6 +38,8 @@ export default function DashboardHub({ user, onStartAIMock, onViewReport, onJoin
   const [stats, setStats] = useState(null);
   const [recentSessions, setRecentSessions] = useState([]);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardCategory, setLeaderboardCategory] = useState("All");
 
   // Fetch real stats and sessions
   useEffect(() => {
@@ -58,6 +60,19 @@ export default function DashboardHub({ user, onStartAIMock, onViewReport, onJoin
     }
     fetchData();
   }, [user?.email]);
+
+  // Fetch leaderboard data when category tab changes
+  useEffect(() => {
+    async function fetchLeaderboard() {
+      try {
+        const res = await API.get(`/leaderboard?category=${leaderboardCategory}`);
+        setLeaderboard(res.data);
+      } catch (err) {
+        console.error("Failed to fetch leaderboard:", err.message);
+      }
+    }
+    fetchLeaderboard();
+  }, [leaderboardCategory]);
 
   const handleCreateRoom = () => {
     const code = "meet-" + Math.random().toString(36).substring(2, 8).toUpperCase() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -235,22 +250,22 @@ export default function DashboardHub({ user, onStartAIMock, onViewReport, onJoin
         </div>
       </motion.div>
 
-      {/* ── 4 Stat Cards Row ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        {/* Metric 1 */}
+      {/* ── 5 Stat Cards Row ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+        {/* Metric 1: Total Completed */}
         <motion.div custom={0} variants={cardVariants} initial="hidden" animate="visible"
           className="glass-card p-5 relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300"
         >
-          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">Sessions This Week</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">Total Mocks</span>
           <span className="text-2xl md:text-3xl font-bold text-white block">
-            {loadingStats ? "—" : statsMetrics.sessionsThisWeek}
+            {loadingStats ? "—" : stats?.totalSessions || 0}
           </span>
           <div className="absolute right-4 bottom-4 text-indigo-500/20 text-3xl group-hover:text-indigo-500/30 transition">
-            <FiCalendar />
+            <FiCheckCircle />
           </div>
         </motion.div>
 
-        {/* Metric 2 */}
+        {/* Metric 2: Avg Score */}
         <motion.div custom={1} variants={cardVariants} initial="hidden" animate="visible"
           className="glass-card p-5 relative overflow-hidden group hover:border-cyan-500/30 transition-all duration-300"
         >
@@ -263,11 +278,11 @@ export default function DashboardHub({ user, onStartAIMock, onViewReport, onJoin
           </div>
         </motion.div>
 
-        {/* Metric 3 */}
+        {/* Metric 3: Streak */}
         <motion.div custom={2} variants={cardVariants} initial="hidden" animate="visible"
           className="glass-card p-5 relative overflow-hidden group hover:border-purple-500/30 transition-all duration-300"
         >
-          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">Streak</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">Daily Streak</span>
           <span className="text-2xl md:text-3xl font-bold text-purple-400 block">
             {loadingStats ? "—" : `${statsMetrics.streak} Day${statsMetrics.streak !== 1 ? "s" : ""}`}
           </span>
@@ -276,16 +291,29 @@ export default function DashboardHub({ user, onStartAIMock, onViewReport, onJoin
           </div>
         </motion.div>
 
-        {/* Metric 4 */}
+        {/* Metric 4: Total XP */}
         <motion.div custom={3} variants={cardVariants} initial="hidden" animate="visible"
-          className="glass-card p-5 relative overflow-hidden group hover:border-rose-500/30 transition-all duration-300"
+          className="glass-card p-5 relative overflow-hidden group hover:border-yellow-500/30 transition-all duration-300"
         >
-          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">Top Weak Area</span>
-          <span className="text-lg md:text-xl font-bold text-rose-400 block mt-1 truncate">
-            {loadingStats ? "—" : statsMetrics.weakArea}
+          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">Total Prep XP</span>
+          <span className="text-2xl md:text-3xl font-bold text-yellow-400 block">
+            {loadingStats ? "—" : `${stats?.xp || 0} XP`}
+          </span>
+          <div className="absolute right-4 bottom-4 text-yellow-500/20 text-3xl group-hover:text-yellow-500/30 transition">
+            <FiAward />
+          </div>
+        </motion.div>
+
+        {/* Metric 5: Category Rank */}
+        <motion.div custom={4} variants={cardVariants} initial="hidden" animate="visible"
+          className="glass-card p-5 relative overflow-hidden group hover:border-rose-500/30 transition-all duration-300 col-span-2 sm:col-span-1"
+        >
+          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">Category Rank</span>
+          <span className="text-2xl md:text-3xl font-bold text-rose-400 block mt-0.5 truncate">
+            {loadingStats ? "—" : `#${stats?.rank || 1}`}
           </span>
           <div className="absolute right-4 bottom-4 text-rose-500/20 text-3xl group-hover:text-rose-500/30 transition">
-            <FiAlertTriangle />
+            <FiUsers />
           </div>
         </motion.div>
       </div>
@@ -490,6 +518,75 @@ export default function DashboardHub({ user, onStartAIMock, onViewReport, onJoin
             ) : (
               <p className="text-xs text-gray-500 italic text-center py-6">No session activity yet.</p>
             )}
+          </div>
+
+          {/* Global Leaderboard Panel */}
+          <div className="glass-card p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <FiAward className="text-purple-400" /> Global Leaderboard
+              </h4>
+              <span className="text-[10px] text-gray-400 font-bold uppercase">Rankings</span>
+            </div>
+            
+            {/* Category Tabs */}
+            <div className="flex flex-wrap gap-1.5 pb-2">
+              {["All", "Engineering", "Medical", "Defense", "Aviation"].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setLeaderboardCategory(cat)}
+                  className={`px-2.5 py-1 rounded-lg text-[9px] font-bold transition ${
+                    leaderboardCategory === cat
+                      ? "bg-purple-600 text-white"
+                      : "bg-white/5 text-gray-400 hover:bg-white/10"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Leaderboard entries */}
+            <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+              {leaderboard.length > 0 ? (
+                leaderboard.map((leader, index) => {
+                  const isMe = leader.email === user?.email;
+                  return (
+                    <div 
+                      key={leader._id || index} 
+                      className={`flex items-center justify-between p-2.5 rounded-xl border transition ${
+                        isMe 
+                          ? "bg-purple-500/10 border-purple-500/30" 
+                          : "bg-white/5 border-white/5 hover:border-white/10"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
+                          index === 0 ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
+                          index === 1 ? "bg-slate-400/20 text-slate-300 border border-slate-400/30" :
+                          index === 2 ? "bg-amber-700/20 text-amber-600 border border-amber-700/30" :
+                          "bg-white/10 text-gray-400"
+                        }`}>
+                          {index + 1}
+                        </span>
+                        <div className="truncate">
+                          <h5 className={`text-xs font-bold truncate ${isMe ? "text-purple-300" : "text-gray-200"}`}>
+                            {leader.name} {isMe && " (You)"}
+                          </h5>
+                          <p className="text-[9px] text-gray-500 truncate font-semibold uppercase">{leader.targetRole || leader.category}</p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-xs font-extrabold text-purple-400 font-mono block">{leader.xp || 0} XP</span>
+                        <span className="text-[9px] text-gray-500 font-bold block">⚡ {leader.streak || 0}d streak</span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-[10px] text-gray-500 italic text-center py-4">No competitors active yet.</p>
+              )}
+            </div>
           </div>
 
           {/* Quick Meet Join panel */}

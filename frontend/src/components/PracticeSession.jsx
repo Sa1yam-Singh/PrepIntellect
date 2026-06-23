@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { FiMic, FiMicOff, FiSend, FiX, FiCheckCircle, FiChevronRight, FiFileText, FiMessageSquare, FiAlertCircle } from "react-icons/fi";
+import { FiMic, FiMicOff, FiSend, FiX, FiCheckCircle, FiChevronRight, FiFileText, FiMessageSquare, FiAlertCircle, FiCode, FiHelpCircle, FiZap, FiCpu } from "react-icons/fi";
 import axios from "axios";
+import Editor from "@monaco-editor/react";
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL 
@@ -8,9 +9,25 @@ const API = axios.create({
     : "/api"
 });
 
-export default function PracticeSession({ questionText, onClose, addToast }) {
-  const [isVoiceMode, setIsVoiceMode] = useState(true);
+export default function PracticeSession({ questionText, user, onClose, addToast, refreshUser }) {
+  const [mode, setMode] = useState("voice"); // "voice", "text", "code"
   const [textAnswer, setTextAnswer] = useState("");
+  const [codeAnswer, setCodeAnswer] = useState(`// Write your SDE coding solution here...
+// Make sure to implement the optimal time & space complexity approach.
+
+function solve() {
+  // Your code here
+  
+}`);
+  const [codeLanguage, setCodeLanguage] = useState("javascript");
+  
+  // AI Hint states
+  const [hint, setHint] = useState("");
+  const [askingHint, setAskingHint] = useState(false);
+  
+  // Code Complexity feedback
+  const [codeRubric, setCodeRubric] = useState(null);
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [transcribedText, setTranscribedText] = useState("");
@@ -211,17 +228,21 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
   // ── Keyboard Shortcuts ────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Don't trigger shortcuts inside text inputs unless submitting with Ctrl+Enter
-      const isInput = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
+      // Don't trigger shortcuts inside text inputs or Monaco Editor unless submitting with Ctrl+Enter
+      const isInput = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.className?.includes("inputarea");
       
       // Ctrl + Enter to submit
       if (e.ctrlKey && e.key === "Enter") {
         e.preventDefault();
-        handleSubmitAnswer();
+        if (mode === "code") {
+          handleSubmitCode();
+        } else {
+          handleSubmitAnswer();
+        }
       }
       
-      // R to toggle recording (only if not inside textarea and voice mode active)
-      if (e.key.toLowerCase() === "r" && !isInput && isVoiceMode && !rubric) {
+      // R to toggle recording (only if not inside inputs and voice mode active)
+      if (e.key.toLowerCase() === "r" && !isInput && mode === "voice" && !rubric) {
         e.preventDefault();
         toggleRecording();
       }
@@ -235,7 +256,7 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
     
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isVoiceMode, isRecording, textAnswer, transcribedText, rubric]);
+  }, [mode, isRecording, textAnswer, codeAnswer, codeLanguage, transcribedText, rubric, codeRubric]);
 
   // Sync speech stats on time updates
   useEffect(() => {
@@ -260,7 +281,7 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
 
   // ── Submit Answer Scorer ──────────────────────────────────────────
   const handleSubmitAnswer = async () => {
-    const finalAnswerText = isVoiceMode ? transcribedText : textAnswer;
+    const finalAnswerText = mode === "voice" ? transcribedText : textAnswer;
 
     if (!finalAnswerText.trim()) {
       addToast("Please record or write an answer first.", "warning");
@@ -268,7 +289,6 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
     }
 
     if (isRecording) {
-      // Force stop recording first
       setIsRecording(false);
       stopSpeechRecognition();
       stopAudioVisualizer();
@@ -281,10 +301,18 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
     try {
       const res = await API.post("/practice/score", {
         question: questionText,
-        answer: finalAnswerText
+        answer: finalAnswerText,
+        email: user?.email
       });
       setRubric(res.data);
-      addToast("Grading complete!", "success");
+      if (res.data.xpAwarded) {
+        addToast(`Grading complete! +${res.data.xpAwarded} XP awarded.`, "success");
+      } else {
+        addToast("Grading complete!", "success");
+      }
+      if (typeof refreshUser === "function") {
+        refreshUser();
+      }
     } catch (err) {
       console.error(err);
       addToast("AI evaluation failed. Please try again.", "error");
@@ -293,8 +321,65 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
     }
   };
 
+  // ── Submit Code Scorer ────────────────────────────────────────────
+  const handleSubmitCode = async () => {
+    if (!codeAnswer.trim()) {
+      addToast("Please write some code first.", "warning");
+      return;
+    }
+
+    setScoring(true);
+    addToast("Evaluating solution & Big-O complexity...", "info");
+
+    try {
+      const res = await API.post("/practice/score-code", {
+        question: questionText,
+        code: codeAnswer,
+        language: codeLanguage,
+        email: user?.email
+      });
+      setCodeRubric(res.data);
+      if (res.data.xpAwarded) {
+        addToast(`Evaluation complete! +${res.data.xpAwarded} XP awarded.`, "success");
+      } else {
+        addToast("Evaluation complete!", "success");
+      }
+      if (typeof refreshUser === "function") {
+        refreshUser();
+      }
+    } catch (err) {
+      console.error(err);
+      addToast("AI evaluation failed. Please try again.", "error");
+    } finally {
+      setScoring(false);
+    }
+  };
+
+  // ── Request AI Hint ───────────────────────────────────────────────
+  const handleAskHint = async () => {
+    setAskingHint(true);
+    setHint("");
+    addToast("Requesting AI hint...", "info");
+    try {
+      const res = await API.post("/practice/hint", {
+        question: questionText,
+        code: codeAnswer,
+        language: codeLanguage
+      });
+      setHint(res.data.hint);
+      addToast("Conceptual hint loaded!", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Failed to generate hint.", "error");
+    } finally {
+      setAskingHint(false);
+    }
+  };
+
   const handleRequestExit = () => {
-    if ((isVoiceMode ? transcribedText : textAnswer).trim() && !rubric) {
+    const hasUnsaved = (mode === "voice" ? transcribedText : mode === "text" ? textAnswer : codeAnswer).trim();
+    const evaluated = rubric || codeRubric;
+    if (hasUnsaved && !evaluated) {
       setShowExitConfirm(true);
     } else {
       onClose();
@@ -341,16 +426,16 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
           <p className="text-sm font-semibold text-gray-200 leading-relaxed">{questionText}</p>
         </div>
 
-        {!rubric ? (
+        {(!rubric && !codeRubric) ? (
           /* Answer Input Area */
           <div className="space-y-6">
             
             {/* Toggle Modes */}
-            <div className="flex justify-between items-center bg-white/5 border border-white/5 rounded-xl p-1.5 max-w-[200px]">
+            <div className="flex justify-between items-center bg-white/5 border border-white/10 rounded-xl p-1.5 max-w-[300px]">
               <button 
-                onClick={() => { stopMicStreaming(); setIsVoiceMode(true); }}
+                onClick={() => { stopMicStreaming(); setMode("voice"); }}
                 className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 ${
-                  isVoiceMode 
+                  mode === "voice" 
                     ? "bg-indigo-600 text-white font-bold" 
                     : "text-gray-400 hover:text-gray-200"
                 }`}
@@ -358,18 +443,28 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
                 <FiMic /> Voice
               </button>
               <button 
-                onClick={() => { stopMicStreaming(); setIsVoiceMode(false); }}
+                onClick={() => { stopMicStreaming(); setMode("text"); }}
                 className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 ${
-                  !isVoiceMode 
+                  mode === "text" 
                     ? "bg-indigo-600 text-white font-bold" 
                     : "text-gray-400 hover:text-gray-200"
                 }`}
               >
                 <FiMessageSquare /> Text
               </button>
+              <button 
+                onClick={() => { stopMicStreaming(); setMode("code"); }}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 ${
+                  mode === "code" 
+                    ? "bg-indigo-600 text-white font-bold" 
+                    : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                <FiCode /> Code
+              </button>
             </div>
 
-            {isVoiceMode ? (
+            {mode === "voice" && (
               /* VOICE MODE CONTROLS */
               <div className="space-y-6 text-center py-4 relative">
                 
@@ -452,10 +547,12 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
                   </div>
                 )}
               </div>
-            ) : (
+            )}
+
+            {mode === "text" && (
               /* TEXT MODE CONTROLS */
-              <div className="space-y-2">
-                <label htmlFor="textAnswer" className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+              <div className="space-y-3">
+                <label htmlFor="textAnswer" className="block text-xs font-bold uppercase tracking-wider text-gray-400">
                   Type Your Response
                 </label>
                 <textarea
@@ -470,6 +567,101 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
               </div>
             )}
 
+            {mode === "code" && (
+              /* CODE MODE CONTROLS */
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <label htmlFor="codeLanguage" className="block text-xs font-bold uppercase tracking-wider text-gray-400">
+                    SDE Practice Editor
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Lang:</span>
+                    <select
+                      id="codeLanguage"
+                      value={codeLanguage}
+                      onChange={(e) => {
+                        const lang = e.target.value;
+                        setCodeLanguage(lang);
+                        if (codeAnswer.startsWith("// Write your")) {
+                          if (lang === "python") {
+                            setCodeAnswer(`# Write your SDE coding solution here...\n# Make sure to implement the optimal time & space complexity approach.\n\ndef solve():\n    pass`);
+                          } else if (lang === "cpp") {
+                            setCodeAnswer(`// Write your SDE coding solution here...\n#include <iostream>\nusing namespace std;\n\nvoid solve() {\n    // Code\n}`);
+                          } else if (lang === "java") {
+                            setCodeAnswer(`// Write your SDE coding solution here...\npublic class Solution {\n    public void solve() {\n        // Code\n    }\n}`);
+                          } else {
+                            setCodeAnswer(`// Write your SDE coding solution here...\n\nfunction solve() {\n  // Code\n}`);
+                          }
+                        }
+                      }}
+                      className="bg-navy-900 border border-white/10 text-xs rounded-lg px-2.5 py-1 text-white font-semibold outline-none focus:border-indigo-500"
+                    >
+                      <option value="javascript">JavaScript</option>
+                      <option value="python">Python</option>
+                      <option value="cpp">C++</option>
+                      <option value="java">Java</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Monaco Editor Wrapper */}
+                <div className="border border-white/10 rounded-xl overflow-hidden bg-[#1e1e1e] h-[260px] relative">
+                  <Editor
+                    height="100%"
+                    language={codeLanguage === "cpp" ? "cpp" : codeLanguage === "python" ? "python" : codeLanguage === "java" ? "java" : "javascript"}
+                    theme="vs-dark"
+                    value={codeAnswer}
+                    onChange={(val) => setCodeAnswer(val || "")}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 12,
+                      scrollbar: { vertical: "visible", horizontal: "auto" },
+                      lineNumbersMinChars: 3,
+                      automaticLayout: true,
+                      tabSize: 2,
+                      scrollBeyondLastLine: false,
+                      padding: { top: 8, bottom: 8 }
+                    }}
+                  />
+                </div>
+
+                {/* AI Hint Section */}
+                {hint && (
+                  <div className="p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 text-xs text-amber-300 flex items-start gap-2.5 animate-fade-in">
+                    <FiHelpCircle className="shrink-0 text-base mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="font-bold uppercase tracking-wider text-[10px] text-amber-500">AI Conceptual Hint</span>
+                      <p className="leading-relaxed">{hint}</p>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex justify-between items-center pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAskHint}
+                    disabled={askingHint}
+                    className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 flex items-center gap-1.5 transition disabled:opacity-50"
+                  >
+                    {askingHint ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3 text-white" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Loading Hint...
+                      </>
+                    ) : (
+                      <>
+                        <FiHelpCircle className="text-sm" /> Ask AI Hint
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[10px] text-gray-500 font-medium font-mono">Ctrl + Enter to compile & grade</p>
+                </div>
+              </div>
+            )}
+
             {/* Actions submit button */}
             <div className="flex gap-3 justify-end pt-3">
               <button 
@@ -481,8 +673,8 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
               </button>
               <button
                 type="button"
-                onClick={handleSubmitAnswer}
-                disabled={scoring || (isVoiceMode ? !transcribedText.trim() : !textAnswer.trim())}
+                onClick={mode === "code" ? handleSubmitCode : handleSubmitAnswer}
+                disabled={scoring || (mode === "voice" ? !transcribedText.trim() : mode === "text" ? !textAnswer.trim() : !codeAnswer.trim())}
                 className="btn-primary flex-1 max-w-[200px]"
               >
                 {scoring ? (
@@ -491,19 +683,19 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    Grading answer...
+                    {mode === "code" ? "Analyzing code..." : "Grading answer..."}
                   </>
                 ) : (
                   <>
-                    Submit Answer <FiSend className="text-xs" />
+                    Submit Solution <FiSend className="text-xs" />
                   </>
                 )}
               </button>
             </div>
 
           </div>
-        ) : (
-          /* AI Score Rubric Report view */
+        ) : rubric ? (
+          /* AI Score Rubric Report view (Voice / Text) */
           <div className="space-y-6">
             
             {/* Overall Score Banner */}
@@ -533,7 +725,7 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
                     {/* Progress container */}
                     <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden relative">
                       <div 
-                        className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full animate-bar-fill transition-all duration-[1200ms]"
+                        className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full"
                         style={{ width: `${value.score * 10}%` }}
                       />
                     </div>
@@ -549,6 +741,86 @@ export default function PracticeSession({ questionText, onClose, addToast }) {
               <h5 className="text-xs font-bold uppercase tracking-wider text-indigo-400">Actionable Suggestions</h5>
               <ul className="space-y-2.5">
                 {rubric.suggestions?.map((s, index) => (
+                  <li key={index} className="flex gap-2.5 text-xs text-gray-300 items-start">
+                    <FiCheckCircle className="text-emerald-400 mt-0.5 shrink-0" />
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Exit CTA */}
+            <div className="flex gap-3 justify-end pt-3">
+              <button 
+                onClick={onClose} 
+                className="btn-primary w-full max-w-[200px]"
+              >
+                Close Sandbox <FiChevronRight />
+              </button>
+            </div>
+
+          </div>
+        ) : (
+          /* CODE GRADING REPORT VIEW (LeetCode-style Big-O Complexity Feedback) */
+          <div className="space-y-6 animate-fade-in">
+            
+            {/* Overall Score & Complexity Banner */}
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-indigo-950/60 to-purple-950/40 border border-indigo-500/20 flex flex-col sm:flex-row justify-between items-center gap-6">
+              <div className="space-y-2 text-center sm:text-left flex-1">
+                <span className="badge bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[9px] uppercase font-extrabold tracking-wider">SDE Code Review</span>
+                <h4 className="text-lg font-bold text-white">SDE Algorithm Assessment</h4>
+                
+                {/* Big-O Badges */}
+                <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-1">
+                  <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-mono text-emerald-400 flex items-center gap-1.5">
+                    <FiZap /> Time: <span className="font-bold">{codeRubric.complexityAnalysis?.time || "O(N)"}</span>
+                  </div>
+                  <div className="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-xs font-mono text-cyan-400 flex items-center gap-1.5">
+                    <FiCpu /> Space: <span className="font-bold">{codeRubric.complexityAnalysis?.space || "O(1)"}</span>
+                  </div>
+                </div>
+                
+                <p className="text-[11px] text-gray-400 leading-relaxed pt-1 font-medium">{codeRubric.complexityAnalysis?.explanation}</p>
+              </div>
+              <div className="flex flex-col items-center gap-1 shrink-0">
+                <span className="text-[9px] uppercase font-bold text-gray-500 tracking-wider">Score Rating</span>
+                <span className="h-16 w-16 rounded-full border-2 border-indigo-500/40 bg-indigo-500/10 flex items-center justify-center font-extrabold text-indigo-400 text-xl shadow-glow">
+                  {codeRubric.overallScore}%
+                </span>
+              </div>
+            </div>
+
+            {/* Code Dimensions Breakdown */}
+            <div className="space-y-4">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-gray-400">Algorithmic Criteria</h5>
+              <div className="space-y-3.5">
+                {Object.entries(codeRubric.dimensions || {}).map(([key, value]) => (
+                  <div key={key} className="space-y-1">
+                    <div className="flex justify-between items-center text-xs font-semibold">
+                      <span className="capitalize text-gray-300 font-bold">
+                        {key === "timeComplexity" ? "Time Complexity" : key === "spaceComplexity" ? "Space Complexity" : key === "optimalApproach" ? "Optimal Approach" : key}
+                      </span>
+                      <span className="text-indigo-400 font-bold">{value.score} / 10</span>
+                    </div>
+                    {/* Progress container */}
+                    <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden relative">
+                      <div 
+                        className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full"
+                        style={{ width: `${value.score * 10}%` }}
+                      />
+                    </div>
+                    {/* comment */}
+                    <p className="text-[11px] text-gray-400 italic font-medium">“{value.comment}”</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Optimization Suggestions */}
+            <div className="p-5 rounded-xl border border-white/5 bg-navy-950/40 space-y-3">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-indigo-400">Refactoring & Optimization Tips</h5>
+              <ul className="space-y-2.5">
+                {codeRubric.suggestions?.map((s, index) => (
                   <li key={index} className="flex gap-2.5 text-xs text-gray-300 items-start">
                     <FiCheckCircle className="text-emerald-400 mt-0.5 shrink-0" />
                     <span>{s}</span>
